@@ -37,6 +37,13 @@ with `<tool>-version` or `<tool>-version-file`, and its config with
 and [`configs/`](configs). As a general rule, these default versions are
 "latest stable" and the default configs are "very strict".
 
+Without a `<tool>-config`, a linter uses the repo's own config if it has one in
+its root, found the way that linter would: `.github/actionlint.y[a]ml`,
+`.flake8` (or `setup.cfg`/`tox.ini` with a `[flake8]` section),
+`.golangci.{yml,yaml,toml,json}`, `.hadolint.y[a]ml`, `.pre-commit-config.yaml`,
+`.shellcheckrc`, `.tflint.hcl`, `.woke.y[a]ml`, `.yamllint[.yaml|.yml]`, or
+`[.github/]zizmor.y[a]ml`. Only failing that is the bundled config used.
+
 The linters, Go's module/build caches, golangci-lint's analysis cache, and
 Terraform providers are kept in the Actions cache, and count toward your repo's
 cache quota. Set `cache: false` to turn that off.

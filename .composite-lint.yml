@@ -5,3 +5,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/ReadOnlyTech/composite-lint/main/composite-lint.schema.json
 exclude: tests/fail  # fixtures that are meant to fail
 go-version-file: tests/pass/go/go.mod
+# Rather than .pre-commit-config.yaml, which only runs this linter
+pre-commit-config: configs/pre-commit.yaml

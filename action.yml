@@ -77,7 +77,7 @@ inputs:
     description: File containing the hadolint version.
     required: false
   pre-commit-config:
-    description: pre-commit config file (by default, the bundled one runs detect-private-key and check-symlinks).
+    description: pre-commit config file (by default, the repo's .pre-commit-config.yaml, else the bundled one, which runs detect-private-key and check-symlinks).
     required: false
   pre-commit-version:
     description: pre-commit version.

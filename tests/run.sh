@@ -17,25 +17,31 @@ failures=0
 unset GITHUB_ACTIONS
 # this repo's .composite-lint.yml excludes tests/fail, which is exactly what these lint
 export LINT_CONFIG_FILE=/dev/null
+# and its .pre-commit-config.yaml would be found instead of the bundled config being tested
+export LINT_PRE_COMMIT_CONFIG=configs/pre-commit.yaml
 
 # Created here rather than committed: the runner can't download an action whose repo contains a broken symlink. It's
 # still linted, being untracked but not ignored.
 broken_symlink=tests/fail/pre-commit/broken-symlink/link
-readonly broken_symlink
+# A separate repo, for its own linter configs
+here=${PWD}
+repo=$(mktemp -d)
+readonly broken_symlink here repo
 ln -sf missing.txt "${broken_symlink}"
-trap 'rm -f "${broken_symlink}"' EXIT
+trap 'rm -f "${broken_symlink}"; rm -rf "${repo}"' EXIT
 
 fail() {
-  echo "FAIL: ${*}"
+  local message=${*}
+  readonly message
+  echo "FAIL: ${message}"
   failures=$((failures + 1))
 }
 
 # Checks `lint detect`'s output for the given arguments
 detects() {
-  local description=${1} expected=${2} actual
-  shift 2
-  actual=$("${lint}" detect "${@}" 2>&1)
-  readonly description expected actual
+  local description=${1} expected=${2} args=("${@:3}") actual
+  actual=$("${lint}" detect "${args[@]}" 2>&1)
+  readonly description expected args actual
   if [[ ${actual} != "${expected}" ]]; then
     fail "${description}: expected ${expected}, got ${actual}"
   else
@@ -111,6 +117,31 @@ if [[ ${status} -ne 2 || ${output} != *"unknown key 'nope'"* ]]; then
 else
   echo 'ok: an unknown config key is an error'
 fi
+
+# Runs the linter in the separate repo, and checks its exit status
+in_repo() {
+  local description=${1} expected=${2} args=("${@:3}") actual
+  output=$(cd "${repo}" && "${here}/${lint}" run "${args[@]}" 2>&1)
+  actual=${?}
+  readonly description expected args actual
+  if ((actual != expected)); then
+    echo "${output}"
+    fail "${description}: expected exit ${expected}, got ${actual}"
+  else
+    echo "ok: ${description}"
+  fi
+}
+
+git -C "${repo}" init -q
+echo 'key: value' >"${repo}/no-document-start.yml"
+printf 'x = "%0150d"\n' 0 >"${repo}/long_line.py"
+in_repo 'the bundled config, without a repo one' 1 -l yaml
+printf 'extends: default\nrules:\n  document-start: disable\n' >"${repo}/.yamllint"
+in_repo "the repo's own config" 0 -l yaml
+LINT_YAMLLINT_CONFIG=${here}/configs/yamllint.yml in_repo "an input over the repo's config" 1 -l yaml
+printf '[metadata]\nname = example\n' >"${repo}/setup.cfg"
+printf '[flake8]\nmax-line-length = 200\n' >"${repo}/.flake8"
+in_repo "the repo's config, skipping one without the tool's section" 0 -l python
 
 for case in tests/fail/*/*/; do
   case=${case%/}

@@ -113,7 +113,7 @@
       "type": "string"
     },
     "pre-commit-config": {
-      "description": "pre-commit config file (by default, the bundled one runs detect-private-key and check-symlinks), relative to the repo root.",
+      "description": "pre-commit config file (by default, the repo's .pre-commit-config.yaml, else the bundled one, which runs detect-private-key and check-symlinks), relative to the repo root.",
       "type": "string"
     },
     "pre-commit-version": {
