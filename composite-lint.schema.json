@@ -2,54 +2,62 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/ReadOnlyTech/composite-lint/main/composite-lint.schema.json",
   "title": "composite-lint config",
-  "description": "Settings for composite-lint (.composite-lint.yml): the action's inputs, as flat key: value lines. The action's inputs, and bin/lint.sh's options and LINT_* environment variables, take precedence; anything unset uses what's bundled.",
+  "description": "Config file for composite-lint (.composite-lint.yml), with the inputs of the action as flat key: value lines. Inputs have priority over this file. In local runs, the options of bin/lint.sh and the LINT_* environment variables have priority over it. For each setting that is not set, the action uses its bundled value.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "languages": {
-      "description": "Languages to lint, comma- or whitespace-separated. If unset, they're detected from the files present.",
+      "description": "Languages to lint, separated by commas or whitespace. If not set, the action finds the languages from the files in the repo.",
       "type": "string",
       "pattern": "^\\s*(actions|docker|go|pre-commit|python|shell|terraform|woke|yaml)(\\s*[,\\s]\\s*(actions|docker|go|pre-commit|python|shell|terraform|woke|yaml))*\\s*$"
     },
     "paths": {
-      "description": "Paths to lint, relative to the repo root; comma- or whitespace-separated. Defaults to the repo root.",
+      "description": "Paths to lint, relative to the repo root and separated by commas or whitespace. The default is the repo root.",
       "type": "string"
     },
     "exclude": {
-      "description": "Git pathspecs to exclude, relative to the repo root; comma- or whitespace-separated.",
+      "description": "Paths and glob patterns to exclude, relative to the repo root and separated by commas or whitespace. In a pattern, `*` matches in one directory, and `**` matches across directories. A path or pattern also excludes all of the files under each match. The default is `.git **/node_modules`. If you set this key, your value replaces the default.",
       "type": "string"
     },
+    "include-hidden": {
+      "description": "Whether the files that git ignores also include hidden files, like `ls -a`. A file is hidden when a part of its path starts with `.`. This key requires include-ignored, because the action always lints the hidden files that git does not ignore. The default is false.",
+      "type": "boolean"
+    },
+    "include-ignored": {
+      "description": "Whether to also lint the files that git ignores, like `ls`. If false, the action lints only the files that git tracks and the untracked files that git does not ignore. Also see include-hidden. The default is false.",
+      "type": "boolean"
+    },
     "go-version": {
-      "description": "Go version; set at most one of this and go-version-file.",
+      "description": "Go version. Set only one of this key and go-version-file.",
       "type": [
         "string",
         "number"
       ]
     },
     "go-version-file": {
-      "description": "File containing the Go version, e.g. go.mod (the default), relative to the repo root.",
+      "description": "File that contains the Go version, relative to the repo root. The default is the go.mod file in the repo root. If go.mod does not exist, the default is the .go-version file in the repo root, if it exists.",
       "type": "string"
     },
     "python-version": {
-      "description": "Python version used to run the Python-based linters; set at most one of this and python-version-file.",
+      "description": "Python version for the linters that use Python. Set only one of this key and python-version-file.",
       "type": [
         "string",
         "number"
       ]
     },
     "python-version-file": {
-      "description": "File containing the Python version, relative to the repo root.",
+      "description": "File that contains the Python version, relative to the repo root. The default is the .python-version file in the repo root, if it exists.",
       "type": "string"
     },
     "terraform-version": {
-      "description": "Terraform version; set at most one of this and terraform-version-file.",
+      "description": "Terraform version. Set only one of this key and terraform-version-file.",
       "type": [
         "string",
         "number"
       ]
     },
     "terraform-version-file": {
-      "description": "File containing the Terraform version, relative to the repo root.",
+      "description": "File that contains the Terraform version, relative to the repo root. The default is the .terraform-version file in the repo root, if it exists.",
       "type": "string"
     },
     "actionlint-config": {
@@ -57,14 +65,14 @@
       "type": "string"
     },
     "actionlint-version": {
-      "description": "actionlint version; set at most one of this and actionlint-version-file.",
+      "description": "actionlint version. Set only one of this key and actionlint-version-file.",
       "type": [
         "string",
         "number"
       ]
     },
     "actionlint-version-file": {
-      "description": "File containing the actionlint version, relative to the repo root.",
+      "description": "File that contains the actionlint version, relative to the repo root. The default is the .actionlint-version file in the repo root, if it exists.",
       "type": "string"
     },
     "flake8-config": {
@@ -72,14 +80,14 @@
       "type": "string"
     },
     "flake8-version": {
-      "description": "flake8 version; set at most one of this and flake8-version-file.",
+      "description": "flake8 version. Set only one of this key and flake8-version-file.",
       "type": [
         "string",
         "number"
       ]
     },
     "flake8-version-file": {
-      "description": "File containing the flake8 version, relative to the repo root.",
+      "description": "File that contains the flake8 version, relative to the repo root. The default is the .flake8-version file in the repo root, if it exists.",
       "type": "string"
     },
     "golangci-lint-config": {
@@ -87,14 +95,14 @@
       "type": "string"
     },
     "golangci-lint-version": {
-      "description": "golangci-lint version; set at most one of this and golangci-lint-version-file.",
+      "description": "golangci-lint version. Set only one of this key and golangci-lint-version-file.",
       "type": [
         "string",
         "number"
       ]
     },
     "golangci-lint-version-file": {
-      "description": "File containing the golangci-lint version, relative to the repo root.",
+      "description": "File that contains the golangci-lint version, relative to the repo root. The default is the .golangci-lint-version file in the repo root, if it exists.",
       "type": "string"
     },
     "hadolint-config": {
@@ -102,44 +110,44 @@
       "type": "string"
     },
     "hadolint-version": {
-      "description": "hadolint version; set at most one of this and hadolint-version-file.",
+      "description": "hadolint version. Set only one of this key and hadolint-version-file.",
       "type": [
         "string",
         "number"
       ]
     },
     "hadolint-version-file": {
-      "description": "File containing the hadolint version, relative to the repo root.",
+      "description": "File that contains the hadolint version, relative to the repo root. The default is the .hadolint-version file in the repo root, if it exists.",
       "type": "string"
     },
     "pre-commit-config": {
-      "description": "pre-commit config file (by default, the repo's .pre-commit-config.yaml, else the bundled one, which runs detect-private-key and check-symlinks), relative to the repo root.",
+      "description": "pre-commit config file, relative to the repo root. The default is the .pre-commit-config.yaml file of the repo. If that file does not exist, the default is the bundled file, which runs detect-private-key and check-symlinks.",
       "type": "string"
     },
     "pre-commit-version": {
-      "description": "pre-commit version; set at most one of this and pre-commit-version-file.",
+      "description": "pre-commit version. Set only one of this key and pre-commit-version-file.",
       "type": [
         "string",
         "number"
       ]
     },
     "pre-commit-version-file": {
-      "description": "File containing the pre-commit version, relative to the repo root.",
+      "description": "File that contains the pre-commit version, relative to the repo root. The default is the .pre-commit-version file in the repo root, if it exists.",
       "type": "string"
     },
     "shellcheck-config": {
-      "description": "ShellCheck config file (an rcfile), relative to the repo root.",
+      "description": "ShellCheck rcfile, relative to the repo root.",
       "type": "string"
     },
     "shellcheck-version": {
-      "description": "ShellCheck version; set at most one of this and shellcheck-version-file.",
+      "description": "ShellCheck version. Set only one of this key and shellcheck-version-file.",
       "type": [
         "string",
         "number"
       ]
     },
     "shellcheck-version-file": {
-      "description": "File containing the ShellCheck version, relative to the repo root.",
+      "description": "File that contains the ShellCheck version, relative to the repo root. The default is the .shellcheck-version file in the repo root, if it exists.",
       "type": "string"
     },
     "tflint-config": {
@@ -147,14 +155,14 @@
       "type": "string"
     },
     "tflint-version": {
-      "description": "TFLint version; set at most one of this and tflint-version-file.",
+      "description": "TFLint version. Set only one of this key and tflint-version-file.",
       "type": [
         "string",
         "number"
       ]
     },
     "tflint-version-file": {
-      "description": "File containing the TFLint version, relative to the repo root.",
+      "description": "File that contains the TFLint version, relative to the repo root. The default is the .tflint-version file in the repo root, if it exists.",
       "type": "string"
     },
     "woke-config": {
@@ -162,14 +170,14 @@
       "type": "string"
     },
     "woke-version": {
-      "description": "woke version; set at most one of this and woke-version-file.",
+      "description": "woke version. Set only one of this key and woke-version-file.",
       "type": [
         "string",
         "number"
       ]
     },
     "woke-version-file": {
-      "description": "File containing the woke version, relative to the repo root.",
+      "description": "File that contains the woke version, relative to the repo root. The default is the .woke-version file in the repo root, if it exists.",
       "type": "string"
     },
     "yamllint-config": {
@@ -177,14 +185,14 @@
       "type": "string"
     },
     "yamllint-version": {
-      "description": "yamllint version; set at most one of this and yamllint-version-file.",
+      "description": "yamllint version. Set only one of this key and yamllint-version-file.",
       "type": [
         "string",
         "number"
       ]
     },
     "yamllint-version-file": {
-      "description": "File containing the yamllint version, relative to the repo root.",
+      "description": "File that contains the yamllint version, relative to the repo root. The default is the .yamllint-version file in the repo root, if it exists.",
       "type": "string"
     },
     "zizmor-config": {
@@ -192,14 +200,14 @@
       "type": "string"
     },
     "zizmor-version": {
-      "description": "zizmor version; set at most one of this and zizmor-version-file.",
+      "description": "zizmor version. Set only one of this key and zizmor-version-file.",
       "type": [
         "string",
         "number"
       ]
     },
     "zizmor-version-file": {
-      "description": "File containing the zizmor version, relative to the repo root.",
+      "description": "File that contains the zizmor version, relative to the repo root. The default is the .zizmor-version file in the repo root, if it exists.",
       "type": "string"
     }
   }

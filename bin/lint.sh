@@ -20,6 +20,11 @@
 # Paths default to the config's `paths`, or `.`. When both are given, only paths within the config's are linted
 # (e.g. for pre-commit, which passes every changed file).
 #
+# Files are those git tracks or would track. With the include-ignored setting true, the files it ignores are too, but
+# only non-hidden ones unless include-hidden is true. Excludes default to `.git **/node_modules`, which setting any
+# replaces (though -x adds to them); in a pattern, `*` matches within a directory and `**` across them, and anything
+# matched excludes everything under it.
+#
 # Settings come from, in order of precedence: options; environment variables (as the action passes its inputs); the
 # config file; and finally what's bundled in versions/ and configs/. The config file takes the action's input names
 # as flat `key: value` lines, e.g. `shellcheck-version: 0.10.0`, with paths relative to the repo root; the matching
@@ -37,9 +42,11 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 LANGUAGES='actions docker go pre-commit python shell terraform woke yaml'
+# for when no excludes are set; mostly relevant to linting files git ignores (include-ignored)
+DEFAULT_EXCLUDES='.git **/node_modules'
 PIP_TOOLS=' flake8 pre-commit yamllint zizmor '
 CACHE=${LINT_CACHE:-${RUNNER_TOOL_CACHE:-${XDG_CACHE_HOME:-${HOME}/.cache}}/composite-lint}
-readonly ROOT LANGUAGES PIP_TOOLS CACHE
+readonly ROOT LANGUAGES DEFAULT_EXCLUDES PIP_TOOLS CACHE
 
 # setup-python's builds load libpython from their own lib dir, which setup-python only adds to the loader's path when
 # it updates the environment, which the action has it not do. GitHub-hosted runners have it configured anyway; other
@@ -134,15 +141,25 @@ read_version_file() {
   done <"${file}"
 }
 
-version() {
-  local tool=${1} key raw file v
+# The repo's own version file for a tool, if it has one in its root: .<tool>-version, like pyenv's .python-version and
+# tfenv's .terraform-version (and the bundled versions/)
+repo_version_file() {
+  local tool=${1}
   readonly tool
+  if [[ -f ${TOP}/.${tool}-version ]]; then
+    echo "${TOP}/.${tool}-version"
+  fi
+}
+
+version() {
+  local tool=${1} key raw file repo_file v
   key=$(env_key "${tool}")
   raw=${key}_VERSION
   raw=${!raw:-}
   file=${key}_VERSION_FILE
   file=${!file:-}
-  readonly key raw file
+  repo_file=$(repo_version_file "${tool}")
+  readonly tool key raw file repo_file
 
   if [[ -n ${raw} && -n ${file} ]]; then
     die "set only one of ${key}_VERSION and ${key}_VERSION_FILE"
@@ -151,6 +168,8 @@ version() {
   elif [[ -n ${file} ]]; then
     [[ -f ${file} ]] || die "${key}_VERSION_FILE: ${file} not found"
     v=$(read_version_file "${file}")
+  elif [[ -n ${repo_file} ]]; then
+    v=$(read_version_file "${repo_file}")
   elif [[ -f ${ROOT}/versions/.${tool}-version ]]; then
     v=$(read_version_file "${ROOT}/versions/.${tool}-version")
   else
@@ -242,7 +261,7 @@ config() {
 # Every key the config file accepts: the action's inputs, minus the ones only it uses (cache, config-file, github-token)
 config_keys() {
   local tool
-  echo languages paths exclude
+  echo languages paths exclude include-hidden include-ignored
   for tool in go python terraform; do
     echo "${tool}-version ${tool}-version-file"
   done
@@ -403,8 +422,9 @@ install_pip() {
   local tool=${1} tool_version=${2}
   local venv=${CACHE}/venv/${tool}-${tool_version}
   readonly tool tool_version venv
-  # a venv breaks if the Python it was made from has gone, e.g. after an upgrade
-  if [[ -x ${venv}/bin/${tool} ]] && "${venv}/bin/python" -c '' 2>/dev/null; then
+  # A venv breaks if the Python it was made from has gone (e.g. after an upgrade) or it's lost files, so check the tool
+  # actually runs
+  if [[ -x ${venv}/bin/${tool} ]] && "${venv}/bin/${tool}" --version >/dev/null 2>&1; then
     return
   fi
   echo "Installing ${tool} ${tool_version} with pip"
@@ -550,7 +570,7 @@ runtime_setting() {
 }
 
 print_versions() {
-  local tool python=false
+  local tool python=false python_file go_file
   for tool in $(selected_tools); do
     echo "${tool} $(version "${tool}")"
     # these configs pin the versions of what the tools install (TFLint's ruleset, pre-commit's hooks)
@@ -564,10 +584,18 @@ print_versions() {
   readonly python
 
   if [[ ${python} == true ]]; then
-    runtime_setting python "${ROOT}/versions/.python-version"
+    python_file=$(repo_version_file python)
+    readonly python_file
+    runtime_setting python "${python_file:-${ROOT}/versions/.python-version}"
   fi
   if is_selected go; then
-    runtime_setting go go.mod
+    # go.mod is Go's own, so it wins; with neither, setup-go reports the missing go.mod
+    go_file=$(repo_version_file go)
+    if [[ -f ${TOP}/go.mod || -z ${go_file} ]]; then
+      go_file=go.mod
+    fi
+    readonly go_file
+    runtime_setting go "${go_file}"
   fi
   if is_selected terraform; then
     echo "terraform-version $(version terraform)"
@@ -576,22 +604,65 @@ print_versions() {
 
 # --- file discovery and language detection ---
 
+# The git pathspecs for an exclude. A plain path excludes everything under it. A pattern is a glob, where `*` matches
+# within a directory and `**` across them, and also excludes everything under what it matches (so e.g. **/node_modules
+# covers node_modules/ at any depth).
+exclude_pathspecs() {
+  local exclude=${1} magic=exclude
+  local path=${exclude}
+  # combined with any magic it already has, e.g. the config's :(top)
+  if [[ ${exclude} == ':('* ]]; then
+    magic+=,${exclude#:(}
+    magic=${magic%%)*}
+    path=${exclude#*)}
+  fi
+  readonly exclude path
+
+  # git never lists anything in .git anyway, and before 2.56, excluding a path shorter than the paths being listed
+  # could read out of bounds and list nothing at all
+  if [[ ${path} == .git || ${path} == .git/* ]]; then
+    return
+  fi
+  if [[ ${path} == *[*?[]* ]]; then
+    echo ":(${magic},glob)${path}"
+    echo ":(${magic},glob)${path}/**"
+  else
+    echo ":(${magic})${path}"
+  fi
+}
+
+# Files within the given pathspecs: everything git tracks or would track, plus what it ignores if INCLUDE_IGNORED, but
+# then only hidden ones (any part of the path starting with `.`) if INCLUDE_HIDDEN
+list_files() {
+  local pathspecs=("${@}") ignored
+  readonly pathspecs
+  git ls-files -co --exclude-standard -- "${pathspecs[@]}" || return 1
+  if [[ ${INCLUDE_IGNORED} == false ]]; then
+    return
+  fi
+  ignored=$(git ls-files -oi --exclude-standard -- "${pathspecs[@]}") || return 1
+  if [[ ${INCLUDE_HIDDEN} == false ]]; then
+    ignored=$(grep -Ev '(^|/)\.[^./]' <<<"${ignored}") || true
+  fi
+  readonly ignored
+  if [[ -n ${ignored} ]]; then
+    echo "${ignored}"
+  fi
+}
+
 collect_files() {
   local excludes=() p f list
   for p in "${EXCLUDES[@]}"; do
-    # combined with any magic it already has, e.g. the config's :(top)
-    if [[ ${p} == ':('* ]]; then
-      excludes+=(":(exclude,${p#:(}")
-    else
-      excludes+=(":(exclude)${p}")
-    fi
+    while IFS= read -r f; do
+      excludes+=("${f}")
+    done < <(exclude_pathspecs "${p}")
   done
   readonly excludes
 
-  list=$(git ls-files -co --exclude-standard -- "${PATHS[@]}" "${excludes[@]}") || die "couldn't list files"
+  list=$(list_files "${PATHS[@]}" "${excludes[@]}") || die "couldn't list files"
   # given paths only count within the configured ones
   if ((${#SCOPE[@]})); then
-    list=$(comm -12 <(sort <<<"${list}") <(git ls-files -co --exclude-standard -- "${SCOPE[@]}" | sort))
+    list=$(comm -12 <(sort <<<"${list}") <(list_files "${SCOPE[@]}" | sort))
   fi
   readonly list
   FILES=()
@@ -685,11 +756,12 @@ print_json() {
 # neither hadolint nor shellcheck searches directories.
 
 # Whether tools can be given the paths to search themselves: only when they're all directories (e.g. pre-commit
-# passes every file, which zizmor rejects unless it's YAML) and there are no excludes, which they wouldn't know about
+# passes every file, which zizmor rejects unless it's YAML), and they'd find the same files. They follow .gitignore, so
+# not when linting ignored files, nor with custom excludes or a configured scope, which they wouldn't know about. (The
+# default excludes are things git ignores anyway.)
 self_discovery() {
   local p
-  # excludes and a configured scope are both things they wouldn't know about
-  if ((${#EXCLUDES[@]} || ${#SCOPE[@]})); then
+  if [[ ${INCLUDE_IGNORED} == true || ${CUSTOM_EXCLUDES} == true ]] || ((${#SCOPE[@]})); then
     return 1
   fi
   for p in "${PATHS[@]}"; do
@@ -1016,8 +1088,13 @@ else
   LINT_LANGUAGES=${LINT_LANGUAGES:-}
   split LANGS "${LINT_LANGUAGES//[\[\]\"]/}"
 fi
-# excludes add up, rather than options replacing the config's
-split EXCLUDES "${LINT_EXCLUDE:-}"
+# Excludes set in the environment or config replace the defaults; options add to whichever apply
+CUSTOM_EXCLUDES=false
+if [[ -n ${LINT_EXCLUDE:-} ]] || ((${#cli_excludes[@]})); then
+  CUSTOM_EXCLUDES=true
+fi
+readonly CUSTOM_EXCLUDES
+split EXCLUDES "${LINT_EXCLUDE:-${DEFAULT_EXCLUDES}}"
 more=()
 for exclude in "${cli_excludes[@]}"; do
   split more "${exclude}"
@@ -1035,6 +1112,16 @@ if ! ((${#PATHS[@]})); then
   PATHS=(.)
 fi
 readonly LANGS EXCLUDES SCOPE PATHS
+
+INCLUDE_IGNORED=${LINT_INCLUDE_IGNORED:-false}
+INCLUDE_HIDDEN=${LINT_INCLUDE_HIDDEN:-false}
+readonly INCLUDE_IGNORED INCLUDE_HIDDEN
+[[ ${INCLUDE_IGNORED} == true || ${INCLUDE_IGNORED} == false ]] ||
+  die "include-ignored must be true or false, not '${INCLUDE_IGNORED}'"
+[[ ${INCLUDE_HIDDEN} == true || ${INCLUDE_HIDDEN} == false ]] ||
+  die "include-hidden must be true or false, not '${INCLUDE_HIDDEN}'"
+# hidden files git doesn't ignore are always linted, so alone it would do nothing
+[[ ${INCLUDE_HIDDEN} == false || ${INCLUDE_IGNORED} == true ]] || die 'include-hidden requires include-ignored'
 
 collect_files
 select_languages

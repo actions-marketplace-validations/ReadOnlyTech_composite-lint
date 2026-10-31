@@ -26,9 +26,11 @@ broken_symlink=tests/fail/pre-commit/broken-symlink/link
 # A separate repo, for its own linter configs
 here=${PWD}
 repo=$(mktemp -d)
-readonly broken_symlink here repo
+# The PATH for the setup isolation check
+bin=$(mktemp -d)
+readonly broken_symlink here repo bin
 ln -sf missing.txt "${broken_symlink}"
-trap 'rm -f "${broken_symlink}"; rm -rf "${repo}"' EXIT
+trap 'rm -f "${broken_symlink}"; rm -rf "${repo}" "${bin}"' EXIT
 
 fail() {
   local message=${*}
@@ -68,8 +70,10 @@ else
 fi
 
 # This golangci-lint version is never installed, and the system dirs won't have one to fall back on (unlike, e.g.,
-# Homebrew's), so only the go checks should be skipped. Uses this Bash, since PATH no longer finds a modern one.
-output=$(PATH=/usr/bin:/bin LINT_GOLANGCI_LINT_VERSION=0.0.1 "${BASH}" "${lint}" run --languages go,python tests/pass 2>&1)
+# Homebrew's), so only the go checks should be skipped. Uses this Bash, since PATH no longer finds a modern one, and
+# this git, rather than whatever old one the system dirs have.
+ln -s "$(command -v git)" "${bin}/git"
+output=$(PATH=${bin}:/usr/bin:/bin LINT_GOLANGCI_LINT_VERSION=0.0.1 "${BASH}" "${lint}" run --languages go,python tests/pass 2>&1)
 status=${?}
 if [[ ${status} -ne 2 || ${output} != *'skipping go'* || ${output} != *'== python =='* ]]; then
   echo "${output}"
@@ -142,6 +146,48 @@ LINT_YAMLLINT_CONFIG=${here}/configs/yamllint.yml in_repo "an input over the rep
 printf '[metadata]\nname = example\n' >"${repo}/setup.cfg"
 printf '[flake8]\nmax-line-length = 200\n' >"${repo}/.flake8"
 in_repo "the repo's config, skipping one without the tool's section" 0 -l python
+
+# The repo's own version files, over the bundled versions. Physical path, as git reports it (macOS's /var is a symlink)
+echo 1.2.3 >"${repo}/.terraform-version"
+echo 3.10 >"${repo}/.python-version"
+echo 0.9.0 >"${repo}/.shellcheck-version"
+echo 1.25 >"${repo}/.go-version"
+output=$(cd "${repo}" && "${here}/${lint}" versions -l go,python,shell,terraform 2>&1)
+if [[ ${output} != *'terraform-version 1.2.3'* || ${output} != *'shellcheck v0.9.0'* ||
+  ${output} != *"python-version-file $(cd "${repo}" && pwd -P)/.python-version"* ||
+  ${output} != *"go-version-file $(cd "${repo}" && pwd -P)/.go-version"* ]]; then
+  echo "${output}"
+  fail "the repo's version files: expected them to be used"
+else
+  echo "ok: the repo's version files"
+fi
+printf 'module example\n\ngo 1.24\n' >"${repo}/go.mod"
+output=$(cd "${repo}" && "${here}/${lint}" versions -l go 2>&1)
+if [[ ${output} != *'go-version-file go.mod'* ]]; then
+  echo "${output}"
+  fail "go.mod over .go-version: expected go.mod"
+else
+  echo 'ok: go.mod over .go-version'
+fi
+rm "${repo}"/.*-version "${repo}/go.mod"
+
+# Which files: each step adds a failing one, which only the step about it should pick up
+printf 'ignored.yml\n.hidden/\nnode_modules/\n' >"${repo}/.gitignore"
+mkdir -p "${repo}/node_modules/pkg" "${repo}/a/node_modules" "${repo}/.hidden"
+printf 'key: value   \n' >"${repo}/node_modules/pkg/bad.yml"
+printf 'key: value   \n' >"${repo}/a/node_modules/bad.yml"
+LINT_INCLUDE_IGNORED=true in_repo 'node_modules is excluded by default, at any depth' 0 -l yaml
+printf 'key: value   \n' >"${repo}/.hidden/bad.yml"
+LINT_INCLUDE_IGNORED=true in_repo 'ignored hidden files are skipped' 0 -l yaml
+LINT_INCLUDE_IGNORED=true LINT_INCLUDE_HIDDEN=true in_repo 'ignored hidden files with include-hidden' 1 -l yaml
+printf 'key: value   \n' >"${repo}/ignored.yml"
+in_repo 'ignored files are skipped by default' 0 -l yaml
+LINT_INCLUDE_IGNORED=true in_repo 'ignored files with include-ignored' 1 -l yaml
+# fails only through node_modules, now no longer excluded
+LINT_INCLUDE_IGNORED=true LINT_EXCLUDE=ignored.yml in_repo 'excludes replace the defaults' 1 -l yaml
+LINT_INCLUDE_IGNORED=nope in_repo 'include-ignored must be true or false' 2 -l yaml
+LINT_INCLUDE_IGNORED=true LINT_INCLUDE_HIDDEN=nope in_repo 'include-hidden must be true or false' 2 -l yaml
+LINT_INCLUDE_HIDDEN=true in_repo 'include-hidden requires include-ignored' 2 -l yaml
 
 for case in tests/fail/*/*/; do
   case=${case%/}

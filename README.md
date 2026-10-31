@@ -1,12 +1,12 @@
 # composite-lint
 
-All-in-one opinionated selection of linters &amp; config.
+One action that runs an opinionated set of linters, with strict linter configs.
 
-(Tested with Linux runners only, both GitHub-hosted and self-hosted.)
+We test the action only on Linux runners, both GitHub-hosted and self-hosted.
 
 ## Usage
 
-See [`action.yml`](action.yml) for all inputs.
+[`action.yml`](action.yml) lists all of the inputs.
 
 ```yaml
 - name: Check out repo
@@ -30,30 +30,86 @@ See [`action.yml`](action.yml) for all inputs.
     shellcheck-version: 0.9.0
 ```
 
-Only the tools needed for the selected `languages` (defaulting to
-auto-detection) are installed. Every language / tool version can be overridden
-with `<tool>-version` or `<tool>-version-file`, and its config with
-`<tool>-config`; anything unset uses what's bundled in [`versions/`](versions)
-and [`configs/`](configs). As a general rule, these default versions are
-"latest stable" and the default configs are "very strict".
+The action installs only the tools that the selected `languages` need. If you
+do not set `languages`, the action finds them from the files in the repo.
 
-Without a `<tool>-config`, a linter uses the repo's own config if it has one in
-its root, found the way that linter would: `.github/actionlint.y[a]ml`,
-`.flake8` (or `setup.cfg`/`tox.ini` with a `[flake8]` section),
-`.golangci.{yml,yaml,toml,json}`, `.hadolint.y[a]ml`, `.pre-commit-config.yaml`,
-`.shellcheckrc`, `.tflint.hcl`, `.woke.y[a]ml`, `.yamllint[.yaml|.yml]`, or
-`[.github/]zizmor.y[a]ml`. Only failing that is the bundled config used.
+### Versions
 
-The linters, Go's module/build caches, golangci-lint's analysis cache, and
-Terraform providers are kept in the Actions cache, and count toward your repo's
-cache quota. Set `cache: false` to turn that off.
+Each tool gets its version from the first of these that exists:
+
+1. The `<tool>-version` or `<tool>-version-file` input.
+2. A `.<tool>-version` file in the repo root, with the same name as in
+   [`versions/`](versions). Examples are `.python-version` and
+   `.terraform-version`. For Go, the `go.mod` file in the repo root comes first.
+3. The bundled file in [`versions/`](versions). The bundled versions are
+   usually the latest stable releases.
+
+### Linter Configs
+
+Each linter gets its linter config from the first of these that exists:
+
+1. The `<tool>-config` input.
+2. The linter config of the repo, in the repo root. The action looks for the
+   same files as the linter, in the same order. The table that follows lists
+   them.
+3. The bundled file in [`configs/`](configs). The bundled linter configs are
+   very strict.
+
+| Linter | Files in the repo root |
+|---|---|
+| actionlint | `.github/actionlint.yaml`, `.github/actionlint.yml` |
+| flake8 | `setup.cfg`, `tox.ini`, `.flake8` (only with a `[flake8]` section) |
+| golangci-lint | `.golangci.yml`, `.golangci.yaml`, `.golangci.toml`, `.golangci.json` |
+| hadolint | `.hadolint.yaml`, `.hadolint.yml` |
+| pre-commit | `.pre-commit-config.yaml` |
+| ShellCheck | `.shellcheckrc`, `shellcheckrc` |
+| TFLint | `.tflint.hcl` |
+| woke | `.woke.yaml`, `.woke.yml` |
+| yamllint | `.yamllint`, `.yamllint.yaml`, `.yamllint.yml` |
+| zizmor | `.github/zizmor.yml`, `.github/zizmor.yaml`, `zizmor.yml`, `zizmor.yaml` |
+
+### Cache
+
+The action keeps these items in the Actions cache:
+
+- The linters.
+- The module and build caches of Go.
+- The analysis cache of golangci-lint.
+- The Terraform providers.
+
+These items count toward the cache quota of your repo. To disable the cache,
+set `cache: false`.
+
+### Which Files
+
+By default, the action lints the files that git tracks. It also lints the
+untracked files that git does not ignore. Two inputs add more files:
+
+- `include-ignored: true` adds the files that git ignores, like `ls`.
+- `include-hidden: true` also adds the hidden files that git ignores, like
+  `ls -a`.
+
+The action always lints the hidden files that git does not ignore, such as
+`.github/`. Thus, `include-hidden` without `include-ignored` is an error.
+
+These two inputs work best before a build or an install adds artifacts. After
+that, you must `exclude` all of the artifacts.
+
+`exclude` takes paths and glob patterns. In a pattern, `*` matches in one
+directory, and `**` matches across directories. A path or pattern also excludes
+all of the files under each match. The default is `.git **/node_modules`. If
+you set `exclude`, your value replaces the default.
 
 ### Config File
 
-Settings can instead live in `.composite-lint.yml` at the repo root, where the
-action, local runs, and pre-commit all read them. It takes the action's input
-names (except `cache`, `config-file`, and `github-token`) as flat `key: value`
-lines, with paths relative to the repo root. The custom example above becomes:
+You can put settings in a `.composite-lint.yml` file in the repo root. The
+action, local runs, and pre-commit all read this config file. It uses the
+input names as flat `key: value` lines. It accepts all of the inputs except
+`cache`, `config-file`, and `github-token`. Paths in it are relative to the
+repo root.
+
+This config file gives the same settings as the custom example in
+[Usage](#usage):
 
 ```yaml
 ---
@@ -68,54 +124,58 @@ shellcheck-config: .shellcheckrc
 shellcheck-version: 0.9.0
 ```
 
-Inputs (or, locally, options and `LINT_*` environment variables) take
-precedence over the file. Use the `config-file` input or `-c` option for a file
-elsewhere.
+Inputs have priority over the config file. In local runs, options and `LINT_*`
+environment variables have priority over it. To use a config file in a
+different location, set the `config-file` input or the `-c` option.
 
-The `yaml-language-server` comment points editors at
-[`composite-lint.schema.json`](composite-lint.schema.json), for completion and
-validation of the keys.
+The `yaml-language-server` comment tells editors to use
+[`composite-lint.schema.json`](composite-lint.schema.json). The editor can
+then complete and validate the keys.
 
 ## Supported Languages / Ecosystems
 
 ### Docker
 
-Using `hadolint`.
+Tools: `hadolint`.
 
 ### GitHub Actions
 
-Using `actionlint`, `yamllint -s`, and `zizmor --persona auditor` (online when
-`GH_TOKEN` / `gh auth token` is available).
+Tools: `actionlint`, `yamllint -s`, and `zizmor --persona auditor`. zizmor
+also does its online audits when `GH_TOKEN` or `gh auth token` gives a token.
 
 ### Go
 
-Using `golangci-lint` and `go mod tidy`.
+Tools: `golangci-lint` and `go mod tidy`.
 
 ### Python
 
-Using `flake8`.
+Tools: `flake8`.
 
 ### Shell
 
-Using `shellcheck` (with the default config equivalent to `-x`).
+Tools: `shellcheck`. The bundled linter config has the same effect as `-x`.
 
 ### Terraform
 
-Using `terraform validate`, `terraform fmt -check -diff`, and `tflint` (with
-the default config using the `all` preset), run on each directory in parallel.
+Tools: `terraform validate`, `terraform fmt -check -diff`, and `tflint`. The
+bundled TFLint config uses the `all` preset. The action lints each Terraform
+directory in parallel.
 
 ### YAML
 
-Using `yamllint -s`.
+Tools: `yamllint -s`.
 
 ## Other Checks
 
-On by default, unless left out of a custom `languages` list:
+These checks are on by default. A custom `languages` list turns off each check
+that it does not include:
 
-- `pre-commit`: runs the hooks in [`configs/pre-commit.yaml`](configs/pre-commit.yaml)
-  (`detect-private-key` and `check-symlinks`), or in your own config via
-  `pre-commit-config`
-- `woke`
+- `pre-commit`: Runs the hooks in the file that `pre-commit-config` gives. If
+  you do not set that input, it runs the hooks in the `.pre-commit-config.yaml` of the repo.
+  If neither exists, it runs the hooks in
+  [`configs/pre-commit.yaml`](configs/pre-commit.yaml), which are
+  `detect-private-key` and `check-symlinks`.
+- `woke`.
 
 ## Running Locally
 
@@ -133,9 +193,9 @@ bin/lint.sh run --install
 bin/lint.sh r -l shell -x path/to/dir/vendor path/to/dir
 ```
 
-Settings come from the config file, or the same `LINT_*` environment variables
-the action uses; see `bin/lint.sh --help` for the details and every command and
-option.
+Local runs read their settings from the config file. They also read the same
+`LINT_*` environment variables that the action uses. For all of the commands,
+options, and details, run `bin/lint.sh --help`.
 
 ### With pre-commit
 
@@ -147,8 +207,9 @@ repos:
       - id: composite-lint
 ```
 
-The hook installs the pinned tools as needed and lints the files pre-commit
-passes in, the same way the action does, including the config file's settings.
+The hook installs the pinned tools when they are necessary. It lints the files
+that pre-commit gives it, in the same way as the action. It also reads the
+config file.
 
 ## Development
 
@@ -160,5 +221,6 @@ bin/lint.sh run
 tests/run.sh
 ```
 
-Each `tests/fail/<language>/<case>/` holds the files to lint, plus an `expect`
-file containing a regex that must appear in the output.
+Each `tests/fail/<language>/<case>/` directory contains the files to lint and
+an `expect` file. The `expect` file contains a regex that must match the
+output.
