@@ -39,3 +39,7 @@ jobs:
       - name: Run test fixtures
         if: ${{ !cancelled() }}
         run: tests/run.sh
+
+      - name: Run release script tests
+        if: ${{ !cancelled() }}
+        run: tests/tag_release.sh

@@ -25,13 +25,10 @@ jobs:
     name: Update Tool Versions
     runs-on: ubuntu-latest
     permissions:
-      actions: write  # to run validation on the PR, which GITHUB_TOKEN's events don't trigger by themselves
       contents: write  # to push the update branch
       pull-requests: write  # to open the PR
     env:
       BASE_BRANCH: ${{ github.event.repository.default_branch }}
-      GH_TOKEN: ${{ github.token }}
-      PR_BRANCH: auto-update-tool-versions
     steps:
       # The PR targets the default branch, so it's what gets updated, even when this is run from another branch
       - name: Check out repo
@@ -41,8 +38,10 @@ jobs:
           ref: ${{ env.BASE_BRANCH }}
 
       # Minor and patch versions only; major versions need assessment, so are left to be done manually
-      - name: Update tool versions
+      - name: Open tool versions update PR as needed
         env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: auto-update-tool-versions
           # Blank (and on scheduled runs) means all tools
           TOOLS: ${{ inputs.tools }}
         run: |
@@ -52,8 +51,6 @@ jobs:
           .github/scripts/bump_tool_versions.py "${tools[@]}" >"${RUNNER_TEMP}/updated.txt"
           cat "${RUNNER_TEMP}/updated.txt"
 
-      - name: Open PR, closing any previous one
-        run: |
           if [[ -z "$(git status --porcelain)" ]]; then
             echo "No updates."
             exit 0

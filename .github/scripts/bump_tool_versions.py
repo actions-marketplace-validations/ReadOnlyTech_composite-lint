@@ -25,7 +25,10 @@ import urllib.request
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 VERSION = re.compile(r"^v?\d+(\.\d+)*$")
 # A versions/.<tool>-version file: the version, with a `v` if the tool's tags have one
-VERSION_FILE = r"^(v?)([\d.]+)$"
+VERSION_FILE = r"^(v?)(?P<version>[\d.]+)$"
+# A pre-commit rev frozen by `pre-commit autoupdate --freeze`, for repos without immutable releases
+FROZEN_REV = (r"^\s*rev:\s*(?P<sha>[0-9a-f]{40})\s*#\s*frozen:\s*v"
+              r"(?P<version>[\d.]+)$")
 
 
 def setup_python_version(version, match):
@@ -50,15 +53,16 @@ def version_file(name, repo, file, usable=None):
     return (name, repo, "v", f"versions/.{file}-version", VERSION_FILE, usable)
 
 
-# Each item is (name, GitHub repo, tag prefix, file, pattern whose 2nd group is
-# the version, optional check that the new version is usable)
+# Each item is (name, GitHub repo, tag prefix, file, pattern with a `version`
+# group and optionally a `sha` group for the tag's commit, optional check that
+# the new version is usable)
 TOOLS = (
     version_file("actionlint", "rhysd/actionlint", "actionlint"),
     version_file("golangci-lint", "golangci/golangci-lint", "golangci-lint"),
     version_file("hadolint", "hadolint/hadolint", "hadolint"),
     (
         "pre-commit-hooks", "pre-commit/pre-commit-hooks", "v",
-        "configs/pre-commit.yaml", r"^(\s*rev:\s*v)([\d.]+)$", None,
+        "configs/pre-commit.yaml", FROZEN_REV, None,
     ),
     # The Python that runs the pip-installed linters
     version_file("Python", "python/cpython", "python", setup_python_version),
@@ -67,7 +71,8 @@ TOOLS = (
     version_file("TFLint", "terraform-linters/tflint", "tflint"),
     (
         "TFLint ruleset", "terraform-linters/tflint-ruleset-terraform", "v",
-        "configs/tflint.hcl", r"^(\s*version\s*=\s*\")([\d.]+)\"", None,
+        "configs/tflint.hcl", r"^(\s*version\s*=\s*\")(?P<version>[\d.]+)\"",
+        None,
     ),
     version_file("woke", "get-woke/woke", "woke"),
 )
@@ -108,13 +113,22 @@ def newest(available, current):
     return ".".join(str(part) for part in best[:parts])
 
 
+def commit(repo, tag):
+    """The commit hash that a tag points to, through any annotated tag."""
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/commits/{tag}", "--jq", ".sha"],
+        check=True, capture_output=True, text=True,
+    )
+    return result.stdout.strip()
+
+
 def bump(name, repo, prefix, file, pattern, usable):
     """Bump the tool's pin in file."""
     available = releases(repo, prefix)
     path = REPO_ROOT / file
 
     def replace(match):
-        current = match[2]
+        current = match["version"]
         candidate = newest(available, current)
         if numbers(candidate) <= numbers(current):
             return match[0]
@@ -122,9 +136,15 @@ def bump(name, repo, prefix, file, pattern, usable):
             print(f"{name} {current} -> {candidate} skipped: not yet usable")
             return match[0]
         print(f"{name} {current} -> {candidate}")
-        start = match.start()
-        return (match[0][:match.start(2) - start] + candidate
-                + match[0][match.end(2) - start:])
+        values = {"version": candidate}
+        if "sha" in match.re.groupindex:
+            values["sha"] = commit(repo, f"{prefix}{candidate}")
+        # replace from the end, so the earlier groups' offsets stay valid
+        text, start = match[0], match.start()
+        for group in sorted(values, key=match.start, reverse=True):
+            text = (text[:match.start(group) - start] + values[group]
+                    + text[match.end(group) - start:])
+        return text
 
     text = path.read_text()
     new = re.compile(pattern, re.MULTILINE).sub(replace, text)

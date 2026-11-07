@@ -40,32 +40,32 @@
 
 set -euo pipefail
 
-ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LANGUAGES='actions docker go pre-commit python shell terraform woke yaml'
 # for when no excludes are set; mostly relevant to linting files git ignores (include-ignored)
 DEFAULT_EXCLUDES='.git **/node_modules'
 PIP_TOOLS=' flake8 pre-commit yamllint zizmor '
-CACHE=${LINT_CACHE:-${RUNNER_TOOL_CACHE:-${XDG_CACHE_HOME:-${HOME}/.cache}}/composite-lint}
+CACHE="${LINT_CACHE:-${RUNNER_TOOL_CACHE:-${XDG_CACHE_HOME:-${HOME}/.cache}}/composite-lint}"
 readonly ROOT LANGUAGES DEFAULT_EXCLUDES PIP_TOOLS CACHE
 
 # setup-python's builds load libpython from their own lib dir, which setup-python only adds to the loader's path when
 # it updates the environment, which the action has it not do. GitHub-hosted runners have it configured anyway; other
 # runners don't, so without this the Python (and the venvs made from it) can't even start.
 if [[ -n ${LINT_PYTHON:-} ]]; then
-  LD_LIBRARY_PATH=$(dirname "$(dirname "${LINT_PYTHON}")")/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+  LD_LIBRARY_PATH="$(dirname "$(dirname "${LINT_PYTHON}")")/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
   readonly LD_LIBRARY_PATH
   export LD_LIBRARY_PATH
 fi
 
 die() {
-  local message=${*}
+  local message="${*}"
   readonly message
   echo "lint: ${message}" >&2
   exit 2
 }
 
 warn() {
-  local message=${*}
+  local message="${*}"
   readonly message
   if [[ -n ${GITHUB_ACTIONS:-} ]]; then
     echo "::warning::${message}"
@@ -76,7 +76,7 @@ warn() {
 
 # Like die, but leaves it to the caller to carry on
 error() {
-  local message=${*}
+  local message="${*}"
   readonly message
   if [[ -n ${GITHUB_ACTIONS:-} ]]; then
     echo "::error::${message}"
@@ -86,7 +86,7 @@ error() {
 }
 
 group() {
-  local title=${*}
+  local title="${*}"
   readonly title
   if [[ -n ${GITHUB_ACTIONS:-} ]]; then
     echo "::group::${title}"
@@ -103,19 +103,19 @@ endgroup() {
 
 # Splits on whitespace and commas without globbing, e.g. `split ARR "${value}"`
 split() {
-  local array=${1} text=${2}
+  local array="${1}" text="${2}"
   readonly array text
   IFS=$' \t\n,' read -r -d '' -a "${array}" <<<"${text}" || true
 }
 
 trim() {
-  local text=${1}
-  text=${text#"${text%%[![:space:]]*}"}
+  local text="${1}"
+  text="${text#"${text%%[![:space:]]*}"}"
   echo "${text%"${text##*[![:space:]]}"}"
 }
 
 abspath() {
-  local path=${1}
+  local path="${1}"
   readonly path
   echo "$(cd "$(dirname "${path}")" && pwd)/$(basename "${path}")"
 }
@@ -123,17 +123,17 @@ abspath() {
 # --- versions and configs ---
 
 env_key() {
-  local name=${1}
+  local name="${1}"
   readonly name
   echo "LINT_$(echo "${name}" | tr '[:lower:]-' '[:upper:]_')"
 }
 
 # First non-blank, non-comment line
 read_version_file() {
-  local file=${1} line
+  local file="${1}" line
   readonly file
   while IFS= read -r line || [[ -n ${line} ]]; do
-    line=$(trim "${line%%#*}")
+    line="$(trim "${line%%#*}")"
     if [[ -n ${line} ]]; then
       echo "${line}"
       return
@@ -144,7 +144,7 @@ read_version_file() {
 # The repo's own version file for a tool, if it has one in its root: .<tool>-version, like pyenv's .python-version and
 # tfenv's .terraform-version (and the bundled versions/)
 repo_version_file() {
-  local tool=${1}
+  local tool="${1}"
   readonly tool
   if [[ -f ${TOP}/.${tool}-version ]]; then
     echo "${TOP}/.${tool}-version"
@@ -152,28 +152,28 @@ repo_version_file() {
 }
 
 version() {
-  local tool=${1} key raw file repo_file v
-  key=$(env_key "${tool}")
-  raw=${key}_VERSION
-  raw=${!raw:-}
-  file=${key}_VERSION_FILE
-  file=${!file:-}
-  repo_file=$(repo_version_file "${tool}")
+  local tool="${1}" key raw file repo_file v
+  key="$(env_key "${tool}")"
+  raw="${key}_VERSION"
+  raw="${!raw:-}"
+  file="${key}_VERSION_FILE"
+  file="${!file:-}"
+  repo_file="$(repo_version_file "${tool}")"
   readonly tool key raw file repo_file
 
   if [[ -n ${raw} && -n ${file} ]]; then
     die "set only one of ${key}_VERSION and ${key}_VERSION_FILE"
   elif [[ -n ${raw} ]]; then
-    v=${raw}
+    v="${raw}"
   elif [[ -n ${file} ]]; then
     [[ -f ${file} ]] || die "${key}_VERSION_FILE: ${file} not found"
-    v=$(read_version_file "${file}")
+    v="$(read_version_file "${file}")"
   elif [[ -n ${repo_file} ]]; then
-    v=$(read_version_file "${repo_file}")
+    v="$(read_version_file "${repo_file}")"
   elif [[ -f ${ROOT}/versions/.${tool}-version ]]; then
-    v=$(read_version_file "${ROOT}/versions/.${tool}-version")
+    v="$(read_version_file "${ROOT}/versions/.${tool}-version")"
   else
-    v=$(sed -n "s/^${tool}==//p" "${ROOT}/versions/pip/requirements.txt")
+    v="$(sed -n "s/^${tool}==//p" "${ROOT}/versions/pip/requirements.txt")"
   fi
   readonly v
 
@@ -188,7 +188,7 @@ version() {
 }
 
 bundled_config() {
-  local tool=${1}
+  local tool="${1}"
   readonly tool
   case ${tool} in
     actionlint) echo actionlint.yml ;;
@@ -205,7 +205,7 @@ bundled_config() {
 # Where each tool looks for a config by default, in its own order of precedence. Only the repo root is checked, rather
 # than per directory, and not the user's home directory.
 repo_configs() {
-  local tool=${1}
+  local tool="${1}"
   readonly tool
   case ${tool} in
     actionlint) echo .github/actionlint.yaml .github/actionlint.yml ;;
@@ -223,7 +223,7 @@ repo_configs() {
 
 # The repo's own config for a tool, if it has one
 repo_config() {
-  local tool=${1} file
+  local tool="${1}" file
   readonly tool
   for file in $(repo_configs "${tool}"); do
     if [[ ! -f ${TOP}/${file} ]]; then
@@ -240,12 +240,12 @@ repo_config() {
 
 # Absolute path to the config to use: the input, else the repo's own, else the bundled one, else nothing
 config() {
-  local tool=${1} var path repo bundled
+  local tool="${1}" var path repo bundled
   readonly tool
-  var=$(env_key "${tool}")_CONFIG
-  path=${!var:-}
-  repo=$(repo_config "${tool}")
-  bundled=$(bundled_config "${tool}")
+  var="$(env_key "${tool}")_CONFIG"
+  path="${!var:-}"
+  repo="$(repo_config "${tool}")"
+  bundled="$(bundled_config "${tool}")"
   readonly var path repo bundled
 
   if [[ -n ${path} ]]; then
@@ -273,24 +273,24 @@ config_keys() {
 # Sets each setting in the config file that isn't already set in the environment. Its paths are relative to the repo
 # root, so they're made absolute (and paths/exclude become git pathspecs from the root).
 load_config() {
-  local file=${1} keys line key value var items item pathspecs
+  local file="${1}" keys line key value var items item pathspecs
   keys=" $(config_keys | tr '\n' ' ') "
   readonly file keys
 
   while IFS= read -r line || [[ -n ${line} ]]; do
-    line=$(trim "${line%%#*}")
+    line="$(trim "${line%%#*}")"
     if [[ -z ${line} || ${line} == --- ]]; then
       continue
     fi
     [[ ${line} =~ ^([a-z0-9-]+):[[:space:]]*(.*)$ ]] || die "${file}: expected flat 'key: value' lines, not '${line}'"
-    key=${BASH_REMATCH[1]}
-    value=${BASH_REMATCH[2]}
+    key="${BASH_REMATCH[1]}"
+    value="${BASH_REMATCH[2]}"
     [[ ${keys} == *" ${key} "* ]] || die "${file}: unknown key '${key}'"
     if [[ ${value} =~ ^\"(.*)\"$ || ${value} =~ ^\'(.*)\'$ ]]; then
-      value=${BASH_REMATCH[1]}
+      value="${BASH_REMATCH[1]}"
     fi
 
-    var=$(env_key "${key}")
+    var="$(env_key "${key}")"
     if [[ -n ${!var:-} ]]; then
       continue
     fi
@@ -301,11 +301,11 @@ load_config() {
         for item in "${items[@]}"; do
           pathspecs+=(":(top)${item}")
         done
-        value=${pathspecs[*]}
+        value="${pathspecs[*]}"
         ;;
       *-config | *-version-file)
         if [[ ${value} != /* ]]; then
-          value=${TOP}/${value}
+          value="${TOP}/${value}"
         fi
         ;;
     esac
@@ -316,7 +316,7 @@ load_config() {
 # --- tool installation ---
 
 tools_for() {
-  local lang=${1}
+  local lang="${1}"
   readonly lang
   case ${lang} in
     actions) echo actionlint shellcheck zizmor ;;
@@ -332,14 +332,14 @@ tools_for() {
 }
 
 is_pip() {
-  local tool=${1}
+  local tool="${1}"
   readonly tool
   [[ ${PIP_TOOLS} == *" ${tool} "* ]]
 }
 
 tool_dir() {
-  local tool=${1} v
-  v=$(version "${tool}")
+  local tool="${1}" v
+  v="$(version "${tool}")"
   readonly tool v
   if is_pip "${tool}"; then
     echo "${CACHE}/venv/${tool}-${v}/bin"
@@ -349,7 +349,7 @@ tool_dir() {
 }
 
 platform() {
-  OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+  OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
   case $(uname -m) in
     x86_64 | amd64) ARCH=amd64 ;;
     aarch64 | arm64) ARCH=arm64 ;;
@@ -360,8 +360,8 @@ platform() {
 
 # Takes the release tag; some asset names use the version without its `v`
 binary_url() {
-  local tool=${1} tag=${2}
-  local v=${tag#v} gh=https://github.com
+  local tool="${1}" tag="${2}"
+  local v="${tag#v}" gh=https://github.com
   readonly tool tag v gh
   case ${tool} in
     actionlint)
@@ -369,7 +369,7 @@ binary_url() {
     golangci-lint)
       echo "${gh}/golangci/golangci-lint/releases/download/${tag}/golangci-lint-${v}-${OS}-${ARCH}.tar.gz" ;;
     hadolint)
-      local os=${OS} arch=x86_64
+      local os="${OS}" arch=x86_64
       [[ ${OS} == darwin ]] && os=macos
       [[ ${ARCH} == arm64 ]] && arch=arm64
       readonly os arch
@@ -393,15 +393,15 @@ binary_url() {
 # no checksum verification; a checksum fetched from the same release only catches corruption.
 # Pin hashes per version in versions/ if supply-chain verification is needed.
 install_binary() {
-  local tool=${1} tag=${2} url tmp
-  local dest=${CACHE}/tools/${tool}/${tag}
+  local tool="${1}" tag="${2}" url tmp
+  local dest="${CACHE}/tools/${tool}/${tag}"
   readonly tool tag dest
   [[ -x ${dest}/${tool} ]] && return
-  url=$(binary_url "${tool}" "${tag}")
+  url="$(binary_url "${tool}" "${tag}")"
   readonly url
   echo "Installing ${tool} ${tag} from ${url}"
 
-  tmp=$(mktemp -d) || return 1
+  tmp="$(mktemp -d)" || return 1
   readonly tmp
   if ! curl -fsSL "${url}" -o "${tmp}/download"; then
     rm -rf "${tmp}"
@@ -419,8 +419,8 @@ install_binary() {
 }
 
 install_pip() {
-  local tool=${1} tool_version=${2}
-  local venv=${CACHE}/venv/${tool}-${tool_version}
+  local tool="${1}" tool_version="${2}"
+  local venv="${CACHE}/venv/${tool}-${tool_version}"
   readonly tool tool_version venv
   # A venv breaks if the Python it was made from has gone (e.g. after an upgrade) or it's lost files, so check the tool
   # actually runs
@@ -455,7 +455,7 @@ selected_tools() {
 }
 
 install_path() {
-  local tool=${1} tool_version=${2}
+  local tool="${1}" tool_version="${2}"
   readonly tool tool_version
   if is_pip "${tool}"; then
     echo "${CACHE}/venv/${tool}-${tool_version}"
@@ -470,7 +470,7 @@ install_tools() {
   local tool v path keep=' ' status=0
   platform
   for tool in $(selected_tools); do
-    v=$(version "${tool}")
+    v="$(version "${tool}")"
     keep+="$(install_path "${tool}" "${v}") "
     if is_pip "${tool}"; then
       install_pip "${tool}" "${v}"
@@ -495,7 +495,7 @@ install_tools() {
 }
 
 runtimes_for() {
-  local lang=${1}
+  local lang="${1}"
   readonly lang
   case ${lang} in
     go) echo go ;;
@@ -504,7 +504,7 @@ runtimes_for() {
 }
 
 need() {
-  local program=${1}
+  local program="${1}"
   readonly program
   command -v "${program}" >/dev/null && return
   error "${program} not found; run 'bin/lint.sh install' or put it on the PATH"
@@ -514,12 +514,12 @@ need() {
 # Puts the installed version of each of a language's tools first on the PATH, falling back to whatever's
 # already there. Fails if anything the language needs is missing.
 setup_language() {
-  local lang=${1} tool dir status=0
+  local lang="${1}" tool dir status=0
   readonly lang
   for tool in $(tools_for "${lang}"); do
-    dir=$(tool_dir "${tool}")
+    dir="$(tool_dir "${tool}")"
     if [[ -d ${dir} ]]; then
-      PATH=${dir}:${PATH}
+      PATH="${dir}:${PATH}"
     fi
     need "${tool}" || status=1
   done
@@ -545,20 +545,20 @@ validate_inputs() {
 }
 
 is_selected() {
-  local lang=${1}
+  local lang="${1}"
   readonly lang
   [[ " ${SELECTED[*]} " == *" ${lang} "* ]]
 }
 
 # A runtime's version setting, for the action's setup-<runtime> step: its version or its version file
 runtime_setting() {
-  local runtime=${1} default_file=${2} key raw file
+  local runtime="${1}" default_file="${2}" key raw file
   readonly runtime default_file
-  key=$(env_key "${runtime}")
-  raw=${key}_VERSION
-  raw=${!raw:-}
-  file=${key}_VERSION_FILE
-  file=${!file:-}
+  key="$(env_key "${runtime}")"
+  raw="${key}_VERSION"
+  raw="${!raw:-}"
+  file="${key}_VERSION_FILE"
+  file="${!file:-}"
   readonly key raw file
   if [[ -n ${raw} && -n ${file} ]]; then
     die "set only one of ${key}_VERSION and ${key}_VERSION_FILE"
@@ -584,13 +584,13 @@ print_versions() {
   readonly python
 
   if [[ ${python} == true ]]; then
-    python_file=$(repo_version_file python)
+    python_file="$(repo_version_file python)"
     readonly python_file
     runtime_setting python "${python_file:-${ROOT}/versions/.python-version}"
   fi
   if is_selected go; then
     # go.mod is Go's own, so it wins; with neither, setup-go reports the missing go.mod
-    go_file=$(repo_version_file go)
+    go_file="$(repo_version_file go)"
     if [[ -f ${TOP}/go.mod || -z ${go_file} ]]; then
       go_file=go.mod
     fi
@@ -608,13 +608,13 @@ print_versions() {
 # within a directory and `**` across them, and also excludes everything under what it matches (so e.g. **/node_modules
 # covers node_modules/ at any depth).
 exclude_pathspecs() {
-  local exclude=${1} magic=exclude
-  local path=${exclude}
+  local exclude="${1}" magic=exclude
+  local path="${exclude}"
   # combined with any magic it already has, e.g. the config's :(top)
   if [[ ${exclude} == ':('* ]]; then
-    magic+=,${exclude#:(}
-    magic=${magic%%)*}
-    path=${exclude#*)}
+    magic+=",${exclude#:(}"
+    magic="${magic%%)*}"
+    path="${exclude#*)}"
   fi
   readonly exclude path
 
@@ -640,9 +640,9 @@ list_files() {
   if [[ ${INCLUDE_IGNORED} == false ]]; then
     return
   fi
-  ignored=$(git ls-files -oi --exclude-standard -- "${pathspecs[@]}") || return 1
+  ignored="$(git ls-files -oi --exclude-standard -- "${pathspecs[@]}")" || return 1
   if [[ ${INCLUDE_HIDDEN} == false ]]; then
-    ignored=$(grep -Ev '(^|/)\.[^./]' <<<"${ignored}") || true
+    ignored="$(grep -Ev '(^|/)\.[^./]' <<<"${ignored}")" || true
   fi
   readonly ignored
   if [[ -n ${ignored} ]]; then
@@ -659,10 +659,10 @@ collect_files() {
   done
   readonly excludes
 
-  list=$(list_files "${PATHS[@]}" "${excludes[@]}") || die "couldn't list files"
+  list="$(list_files "${PATHS[@]}" "${excludes[@]}")" || die "couldn't list files"
   # given paths only count within the configured ones
   if ((${#SCOPE[@]})); then
-    list=$(comm -12 <(sort <<<"${list}") <(list_files "${SCOPE[@]}" | sort))
+    list="$(comm -12 <(sort <<<"${list}") <(list_files "${SCOPE[@]}" | sort))"
   fi
   readonly list
   FILES=()
@@ -676,15 +676,15 @@ collect_files() {
 }
 
 is_shell_script() {
-  local file=${1} line
+  local file="${1}" line
   IFS= read -r line <"${file}" || true
   readonly file line
   [[ ${line} =~ ^#!.*[/[:space:]](ba|da|k)?sh([[:space:]]|$) ]]
 }
 
 matches() {
-  local lang=${1} file=${2}
-  local base=${file##*/}
+  local lang="${1}" file="${2}"
+  local base="${file##*/}"
   readonly lang file base
   case ${lang} in
     actions)
@@ -705,7 +705,7 @@ matches() {
 }
 
 files_for() {
-  local lang=${1} f
+  local lang="${1}" f
   readonly lang
   LANG_FILES=()
   for f in "${FILES[@]}"; do
@@ -720,7 +720,7 @@ files_for() {
 }
 
 select_languages() {
-  local lang
+  local lang kept=()
   SELECTED=()
   if ((${#LANGS[@]})); then
     for lang in "${LANGS[@]}"; do
@@ -734,6 +734,15 @@ select_languages() {
         SELECTED+=("${lang}")
       fi
     done
+  fi
+  if [[ ${HOOKED_BY_PRE_COMMIT} == true ]] && is_selected pre-commit; then
+    echo "lint: skipping the pre-commit check; pre-commit is already running the other hooks in its config" >&2
+    for lang in "${SELECTED[@]}"; do
+      if [[ ${lang} != pre-commit ]]; then
+        kept+=("${lang}")
+      fi
+    done
+    SELECTED=("${kept[@]}")
   fi
   readonly SELECTED
 }
@@ -779,7 +788,7 @@ each() {
 quiet() {
   local command=("${@}") output rc=0
   readonly command
-  output=$("${command[@]}" 2>&1) || rc=${?}
+  output="$("${command[@]}" 2>&1)" || rc="${?}"
   readonly output rc
   if ((rc)); then
     echo "${output}"
@@ -797,15 +806,15 @@ lint_actions() {
   readonly workflows
 
   if ((${#workflows[@]})); then
-    cfg=$(config actionlint)
+    cfg="$(config actionlint)"
     readonly cfg
     # actionlint passes scripts to shellcheck via stdin, so the rcfile's disables have to be passed as options
-    SHELLCHECK_OPTS=$(sed -n 's/^[[:space:]]*disable=/-e /p' "$(config shellcheck)" | tr '\n' ' ') \
+    SHELLCHECK_OPTS="$(sed -n 's/^[[:space:]]*disable=/-e /p' "$(config shellcheck)" | tr '\n' ' ')" \
       actionlint ${cfg:+-config-file "${cfg}"} "${workflows[@]}" || rc=1
   fi
 
   if [[ -z ${GH_TOKEN:-} ]] && type -p gh >/dev/null; then
-    GH_TOKEN=$(gh auth token 2>/dev/null) && export GH_TOKEN
+    GH_TOKEN="$(gh auth token 2>/dev/null)" && export GH_TOKEN
   fi
 
   if [[ -z ${GH_TOKEN:-} ]]; then
@@ -830,7 +839,7 @@ lint_docker() {
 
 lint_go() {
   local rc=0 mod opts=(--no-config) cfg
-  cfg=$(config golangci-lint)
+  cfg="$(config golangci-lint)"
   readonly cfg
   if [[ -n ${cfg} ]]; then
     opts=(-c "${cfg}")
@@ -853,7 +862,7 @@ lint_go() {
 
 # Runs the hooks in the pre-commit config (by default, detect-private-key and check-symlinks) on the files
 lint_pre_commit() {
-  export PRE_COMMIT_HOME=${PRE_COMMIT_HOME:-${CACHE}/pre-commit}
+  export PRE_COMMIT_HOME="${PRE_COMMIT_HOME:-${CACHE}/pre-commit}"
   readonly PRE_COMMIT_HOME
   # A config that includes this linter's own hook would run it again, which would run pre-commit again, forever. This
   # run already covers everything, so skip the hook, and mark the nested run (see main) in case it has another id.
@@ -872,18 +881,18 @@ lint_shell() {
 
 # Inits without a backend, keeping .terraform out of the checkout and leaving any lock file as it was found
 terraform_validate() {
-  local dir=${1} rc=0 data output lockfile_opts=()
-  local lock=${dir}/.terraform.lock.hcl
+  local dir="${1}" rc=0 data output lockfile_opts=()
+  local lock="${dir}/.terraform.lock.hcl"
   readonly dir lock
   if [[ -f ${lock} ]]; then
     lockfile_opts=(-lockfile=readonly)
   fi
-  data=$(mktemp -d "${TF_DATA_ROOT}/XXXXXX")
+  data="$(mktemp -d "${TF_DATA_ROOT}/XXXXXX")"
   readonly data lockfile_opts
 
   # only the step that failed is shown, so a successful init's chatter doesn't bury validate's errors
-  if ! output=$(TF_DATA_DIR=${data} terraform -chdir="${dir}" init -backend=false -input=false "${lockfile_opts[@]}" 2>&1) ||
-    ! output=$(TF_DATA_DIR=${data} terraform -chdir="${dir}" validate 2>&1); then
+  if ! output="$(TF_DATA_DIR="${data}" terraform -chdir="${dir}" init -backend=false -input=false "${lockfile_opts[@]}" 2>&1)" ||
+    ! output="$(TF_DATA_DIR="${data}" terraform -chdir="${dir}" validate 2>&1)"; then
     echo "${output}"
     rc=1
   fi
@@ -897,8 +906,8 @@ terraform_validate() {
 
 # Every check for one directory, saving the output so parallel runs can be printed in order afterwards
 terraform_dir() {
-  local dir=${1} rc=0
-  local out=${TF_DATA_ROOT}/out/dir${dir//\//%}
+  local dir="${1}" rc=0
+  local out="${TF_DATA_ROOT}/out/dir${dir//\//%}"
   readonly dir out
   {
     terraform fmt -check -diff "${dir}" || rc=1
@@ -911,10 +920,10 @@ terraform_dir() {
 
 lint_terraform() {
   local rc=0 dir f dirs=()
-  TFLINT_CONFIG=$(config tflint)
-  TF_DATA_ROOT=$(mktemp -d)
-  export TF_PLUGIN_CACHE_DIR=${TF_PLUGIN_CACHE_DIR:-${CACHE}/terraform-plugins}
-  export TFLINT_PLUGIN_DIR=${TFLINT_PLUGIN_DIR:-${CACHE}/tflint-plugins}
+  TFLINT_CONFIG="$(config tflint)"
+  TF_DATA_ROOT="$(mktemp -d)"
+  export TF_PLUGIN_CACHE_DIR="${TF_PLUGIN_CACHE_DIR:-${CACHE}/terraform-plugins}"
+  export TFLINT_PLUGIN_DIR="${TFLINT_PLUGIN_DIR:-${CACHE}/tflint-plugins}"
   readonly TFLINT_CONFIG TF_DATA_ROOT TF_PLUGIN_CACHE_DIR TFLINT_PLUGIN_DIR
   # for the parallel runs
   export TFLINT_CONFIG TF_DATA_ROOT
@@ -939,7 +948,7 @@ lint_terraform() {
   readonly rc
 
   for dir in "${dirs[@]}"; do
-    f=${TF_DATA_ROOT}/out/dir${dir//\//%}
+    f="${TF_DATA_ROOT}/out/dir${dir//\//%}"
     if [[ -s ${f} ]]; then
       echo "-- ${dir}"
       cat "${f}"
@@ -951,7 +960,7 @@ lint_terraform() {
 
 lint_woke() {
   local cfg opts=(--exit-1-on-failure)
-  cfg=$(config woke)
+  cfg="$(config woke)"
   readonly cfg
   if [[ -n ${cfg} ]]; then
     opts+=(-c "${cfg}")
@@ -997,7 +1006,7 @@ run_linters() {
 # --- main ---
 
 usage() {
-  local status=${1:-0}
+  local status="${1:-0}"
   readonly status
   sed -n '3,/^$/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
   exit "${status}"
@@ -1008,7 +1017,7 @@ if [[ ${LINT_NESTED:-} == true ]]; then
   exit 0
 fi
 
-command_arg=${1:-}
+command_arg="${1:-}"
 readonly command_arg
 if [[ -z ${command_arg} ]]; then
   usage 2
@@ -1028,18 +1037,18 @@ readonly cmd
 shift
 
 install=false
-config_file=${LINT_CONFIG_FILE:-}
+config_file="${LINT_CONFIG_FILE:-}"
 cli_languages=''
 cli_excludes=()
 cli_paths=()
 while ((${#})); do
   # an option, path, or option's value, and the next argument (the value, for options that take one)
-  arg=${1}
-  value=${2:-}
+  arg="${1}"
+  value="${2:-}"
   case ${arg} in
     -c | --config-file)
       [[ -n ${value} ]] || die "${arg} needs a value"
-      config_file=${value}
+      config_file="${value}"
       shift 2
       ;;
     -i | --install)
@@ -1048,7 +1057,7 @@ while ((${#})); do
       ;;
     -l | --languages)
       [[ -n ${value} ]] || die "${arg} needs a value"
-      cli_languages=${value}
+      cli_languages="${value}"
       shift 2
       ;;
     -x | --exclude)
@@ -1069,10 +1078,10 @@ if [[ ${install} == true && ${cmd} != run ]]; then
 fi
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "not inside a git repository"
-TOP=$(git rev-parse --show-toplevel)
+TOP="$(git rev-parse --show-toplevel)"
 readonly TOP
 if [[ -z ${config_file} && -f ${TOP}/.composite-lint.yml ]]; then
-  config_file=${TOP}/.composite-lint.yml
+  config_file="${TOP}/.composite-lint.yml"
 fi
 if [[ -n ${config_file} ]]; then
   # -r rather than -f, so e.g. /dev/null can stand in for "no config"
@@ -1085,7 +1094,7 @@ readonly install config_file cli_languages cli_excludes cli_paths
 if [[ -n ${cli_languages} ]]; then
   split LANGS "${cli_languages}"
 else
-  LINT_LANGUAGES=${LINT_LANGUAGES:-}
+  LINT_LANGUAGES="${LINT_LANGUAGES:-}"
   split LANGS "${LINT_LANGUAGES//[\[\]\"]/}"
 fi
 # Excludes set in the environment or config replace the defaults; options add to whichever apply
@@ -1113,8 +1122,8 @@ if ! ((${#PATHS[@]})); then
 fi
 readonly LANGS EXCLUDES SCOPE PATHS
 
-INCLUDE_IGNORED=${LINT_INCLUDE_IGNORED:-false}
-INCLUDE_HIDDEN=${LINT_INCLUDE_HIDDEN:-false}
+INCLUDE_IGNORED="${LINT_INCLUDE_IGNORED:-false}"
+INCLUDE_HIDDEN="${LINT_INCLUDE_HIDDEN:-false}"
 readonly INCLUDE_IGNORED INCLUDE_HIDDEN
 [[ ${INCLUDE_IGNORED} == true || ${INCLUDE_IGNORED} == false ]] ||
   die "include-ignored must be true or false, not '${INCLUDE_IGNORED}'"
@@ -1122,6 +1131,14 @@ readonly INCLUDE_IGNORED INCLUDE_HIDDEN
   die "include-hidden must be true or false, not '${INCLUDE_HIDDEN}'"
 # hidden files git doesn't ignore are always linted, so alone it would do nothing
 [[ ${INCLUDE_HIDDEN} == false || ${INCLUDE_IGNORED} == true ]] || die 'include-hidden requires include-ignored'
+
+# Whether pre-commit is running this script as a hook, with the same config that the pre-commit check would use. If so,
+# pre-commit runs the other hooks in that config itself, so the check would only run them again.
+HOOKED_BY_PRE_COMMIT=false
+if [[ ${PRE_COMMIT:-} == 1 && $(config pre-commit) == "${TOP}/.pre-commit-config.yaml" ]]; then
+  HOOKED_BY_PRE_COMMIT=true
+fi
+readonly HOOKED_BY_PRE_COMMIT
 
 collect_files
 select_languages

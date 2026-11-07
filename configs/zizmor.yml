@@ -4,8 +4,11 @@ rules:
   unpinned-uses:
     config:
       policies:
+        # GitHub doesn't reliably use immutable tags/releases for its actions,
+        # but at this point it seems that most don't want to move to SHA pins
         actions/*: ref-pin
         advanced-security/*: ref-pin
         github/*: ref-pin
         octokit/*: ref-pin
+        # We do use immutable tags/releases!
         ReadOnlyTech/*: ref-pin

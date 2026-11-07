@@ -13,8 +13,7 @@ updates:
       - chore
     open-pull-requests-limit: 20
     schedule:
-      day: sunday
-      interval: weekly
+      interval: daily
 
   - package-ecosystem: pip
     commit-message:
@@ -26,5 +25,4 @@ updates:
       - ci
     open-pull-requests-limit: 20
     schedule:
-      day: sunday
-      interval: weekly
+      interval: daily

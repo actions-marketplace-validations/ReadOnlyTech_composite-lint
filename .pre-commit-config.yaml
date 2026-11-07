@@ -1,12 +1,22 @@
 ---
 
-# Lints this repo with itself, the same way CI does (settings, like excluding
-# tests/fail, are in .composite-lint.yml)
+default_install_hook_types:
+  - commit-msg
+  - pre-commit
 repos:
   - repo: local
     hooks:
+      # Lints this repo with itself, the same way CI does.
+      # Settings are in .composite-lint.yml
       - id: composite-lint
         name: composite-lint
         entry: bin/lint.sh run --install
         language: script
         require_serial: true
+        # otherwise it runs again at the commit-msg stage
+        stages:
+          - pre-commit
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: 33b50eb042bee26eac0ee96ad84aa9c1b4dccdd8  # frozen: v4.5.0
+    hooks:
+      - id: conventional-pre-commit

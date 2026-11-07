@@ -305,9 +305,9 @@ runs:
         readonly lint
         echo "tools=$("${lint}" versions | sha256sum | cut -c1-16)" >>"${GITHUB_OUTPUT}"
         status=0
-        "${lint}" install || status=${?}
+        "${lint}" install || status="${?}"
         echo "installed=$((status == 0))" >>"${GITHUB_OUTPUT}"
-        "${lint}" run || status=${?}
+        "${lint}" run || status="${?}"
         readonly status
         exit "${status}"
 
