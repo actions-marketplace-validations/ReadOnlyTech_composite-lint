@@ -3,7 +3,8 @@
 
 Adapted from RentTheRunway/application-workflows' script of the same name. Only
 minor and patch updates are applied, never a new major version. Versions come
-from each tool's GitHub tags; prereleases are ignored. Each pin keeps its
+from each tool's GitHub tags; prereleases are ignored, as are versions released
+less than COOLDOWN ago, matching Dependabot's cooldown. Each pin keeps its
 precision, e.g. a pinned 3.15 becomes 3.16 rather than 3.16.0. The pip-installed
 tools (versions/pip/requirements.txt, including pre-commit itself) are left to
 Dependabot. Requires an authenticated `gh` CLI.
@@ -14,6 +15,7 @@ Usage:
       all of them by default; --help lists them
 """
 import argparse
+import datetime
 import functools
 import json
 import pathlib
@@ -23,6 +25,8 @@ import sys
 import urllib.request
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+# Keep in sync with the cooldown in .github/dependabot.yml
+COOLDOWN = datetime.timedelta(days=7)
 VERSION = re.compile(r"^v?\d+(\.\d+)*$")
 # A versions/.<tool>-version file: the version, with a `v` if the tool's tags have one
 VERSION_FILE = r"^(v?)(?P<version>[\d.]+)$"
@@ -102,24 +106,54 @@ def releases(repo, prefix):
     return [name for name in names if numbers(name)]
 
 
-def newest(available, current):
-    """The newest version in current's major version, keeping its precision."""
+def newest(available, current, old_enough):
+    """The newest old-enough version in current's major version, keeping its
+    precision."""
     parts = len(numbers(current))
     same = [v for v in available if numbers(v)[:1] == numbers(current)[:1]]
-    if not same:
-        return current
-    # pad (e.g. a 3.16 tag for a 3.16.0 pin) or truncate to the same precision
-    best = numbers(max(same, key=numbers)) + (0,) * parts
-    return ".".join(str(part) for part in best[:parts])
+    for version in sorted(same, key=numbers, reverse=True):
+        # pad (e.g. a 3.16 tag for a 3.16.0 pin) or truncate to the same precision
+        best = (numbers(version) + (0,) * parts)[:parts]
+        if best <= numbers(current):
+            break
+        if old_enough(version):
+            return ".".join(str(part) for part in best)
+    return current
 
 
+@functools.cache
 def commit(repo, tag):
-    """The commit hash that a tag points to, through any annotated tag."""
+    """The hash and date of the commit that a tag points to, through any
+    annotated tag."""
     result = subprocess.run(
-        ["gh", "api", f"repos/{repo}/commits/{tag}", "--jq", ".sha"],
+        ["gh", "api", f"repos/{repo}/commits/{tag}",
+         "--jq", "{sha, date: .commit.committer.date}"],
         check=True, capture_output=True, text=True,
     )
-    return result.stdout.strip()
+    return json.loads(result.stdout)
+
+
+def released(repo, tag):
+    """When the tag's GitHub release was published, or else the date of its
+    commit, for repos that only tag (or where the release has no date)."""
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/releases/tags/{tag}",
+         "--jq", ".published_at"],
+        capture_output=True, text=True,
+    )
+    if result.returncode and "HTTP 404" not in result.stderr:
+        result.check_returncode()
+    date = result.stdout.strip() if not result.returncode else ""
+    if date in ("", "null"):
+        date = commit(repo, tag)["date"]
+    return datetime.datetime.fromisoformat(date)
+
+
+def old_enough(repo, tag, now=None):
+    """Whether the tag was released at least COOLDOWN before now (by default,
+    the current time)."""
+    now = now or datetime.datetime.now(datetime.UTC)
+    return now - released(repo, tag) >= COOLDOWN
 
 
 def bump(name, repo, prefix, file, pattern, usable):
@@ -127,9 +161,15 @@ def bump(name, repo, prefix, file, pattern, usable):
     available = releases(repo, prefix)
     path = REPO_ROOT / file
 
+    def cooled(version):
+        if old_enough(repo, f"{prefix}{version}"):
+            return True
+        print(f"{name} {version} skipped: under {COOLDOWN.days} days old")
+        return False
+
     def replace(match):
         current = match["version"]
-        candidate = newest(available, current)
+        candidate = newest(available, current, cooled)
         if numbers(candidate) <= numbers(current):
             return match[0]
         if usable and not usable(candidate, match):
@@ -138,7 +178,7 @@ def bump(name, repo, prefix, file, pattern, usable):
         print(f"{name} {current} -> {candidate}")
         values = {"version": candidate}
         if "sha" in match.re.groupindex:
-            values["sha"] = commit(repo, f"{prefix}{candidate}")
+            values["sha"] = commit(repo, f"{prefix}{candidate}")["sha"]
         # replace from the end, so the earlier groups' offsets stay valid
         text, start = match[0], match.start()
         for group in sorted(values, key=match.start, reverse=True):

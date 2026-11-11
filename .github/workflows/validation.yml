@@ -5,13 +5,18 @@ name: Lint and Test
 
 on:  # yamllint disable-line rule:truthy
   pull_request:
+    paths-ignore: &ignored_paths
+      - '.github/CODEOWNERS'
+      - 'LICENSE'
+      - 'README.md'
     types:
       - opened
-      - synchronize
       - reopened
+      - synchronize
   push:
     branches:
       - main
+    paths-ignore: *ignored_paths
   workflow_dispatch:
 
 concurrency:
@@ -43,3 +48,9 @@ jobs:
       - name: Run release script tests
         if: ${{ !cancelled() }}
         run: tests/tag_release.sh
+
+      - name: Run tool version updater tests
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tests/bump_tool_versions.py

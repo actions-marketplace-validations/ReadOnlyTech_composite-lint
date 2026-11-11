@@ -5,24 +5,24 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     commit-message:
-      prefix: 'chore(actions): '
+      prefix: 'ci(actions): '
     cooldown:
       default-days: 7
     directory: '/'
     labels:
-      - chore
+      - ci
     open-pull-requests-limit: 20
     schedule:
       interval: daily
 
   - package-ecosystem: pip
     commit-message:
-      prefix: 'ci(pip): '
+      prefix: 'chore(pip): '
     cooldown:
       default-days: 7
     directory: '/versions/pip'
     labels:
-      - ci
+      - chore
     open-pull-requests-limit: 20
     schedule:
       interval: daily

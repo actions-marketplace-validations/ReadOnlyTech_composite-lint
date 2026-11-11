@@ -1,6 +1,6 @@
 # composite-lint
 
-One action that runs an opinionated set of linters, with strict linter configs.
+This action runs an opinionated set of linters with strict linter configs.
 
 We test the action only on Linux runners, both GitHub-hosted and self-hosted.
 
@@ -15,10 +15,10 @@ We test the action only on Linux runners, both GitHub-hosted and self-hosted.
     persist-credentials: false
 
 - name: Run linting (strict, autodetect)
-  uses: ReadOnlyTech/composite-lint@v0.0.10
+  uses: ReadOnlyTech/composite-lint@v0.0.11
 
 - name: Run linting (custom)
-  uses: ReadOnlyTech/composite-lint@v0.0.10
+  uses: ReadOnlyTech/composite-lint@v0.0.11
   with:
     cache: false
     paths: src
@@ -97,8 +97,8 @@ untracked files that git does not ignore. Two inputs add more files:
 The action always lints the hidden files that git does not ignore, such as
 `.github/`. Thus, `include-hidden` without `include-ignored` is an error.
 
-These two inputs work best before a build or an install adds artifacts. After
-that, you must `exclude` all of the artifacts.
+These two inputs work best before a build or an install adds artifacts. If you
+use them after a build or an install, add all of the artifacts to `exclude`.
 
 `exclude` takes paths and glob patterns. In a pattern, `*` matches in one
 directory, and `**` matches across directories. A path or pattern also excludes
@@ -176,8 +176,8 @@ These checks are on by default. A custom `languages` list turns off each check
 that it does not include:
 
 - `pre-commit`: Runs the hooks in the file that `pre-commit-config` gives. If
-  you do not set that input, it runs the hooks in the `.pre-commit-config.yaml` of the repo.
-  If neither exists, it runs the hooks in
+  you do not set that input, it runs the hooks in the `.pre-commit-config.yaml`
+  of the repo. If neither exists, it runs the hooks in
   [`configs/pre-commit.yaml`](configs/pre-commit.yaml), which are
   `detect-private-key` and `check-symlinks`.
 - `woke`.
@@ -211,7 +211,7 @@ This is the recommended `.pre-commit-config.yaml`:
 
 repos:
   - repo: https://github.com/ReadOnlyTech/composite-lint
-    rev: v0.0.10
+    rev: v0.0.11
     hooks:
       - id: composite-lint
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -228,13 +228,13 @@ config file.
 The second repo contains the hooks of the bundled
 [`configs/pre-commit.yaml`](configs/pre-commit.yaml). Your
 `.pre-commit-config.yaml` replaces the bundled file, so it must contain these
-hooks too. The pre-commit check of the action then runs them. It skips the
-`composite-lint` hook. When pre-commit runs the `composite-lint` hook from
+hooks too. The pre-commit check of the action then runs them. This check skips
+the `composite-lint` hook. When pre-commit runs the `composite-lint` hook from
 this file, composite-lint does not do its pre-commit check, because pre-commit
 runs the other hooks itself.
 
-The pre-commit-hooks releases are not immutable, so the example uses the commit
-hash of the tag.
+The releases of pre-commit-hooks are not immutable, so their tags can change.
+Thus, the example uses the commit hash of the tag.
 
 ## Development
 
