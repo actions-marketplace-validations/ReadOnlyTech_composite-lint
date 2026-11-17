@@ -7,7 +7,9 @@ from each tool's GitHub tags; prereleases are ignored, as are versions released
 less than COOLDOWN ago, matching Dependabot's cooldown. Each pin keeps its
 precision, e.g. a pinned 3.15 becomes 3.16 rather than 3.16.0. The pip-installed
 tools (versions/pip/requirements.txt, including pre-commit itself) are left to
-Dependabot. Requires an authenticated `gh` CLI.
+Dependabot. Java isn't here either: its pin is only a major version (setup-java
+gets the newest release in it), so there's no minor or patch update to apply.
+Requires an authenticated `gh` CLI.
 
 Usage:
   .github/scripts/bump_tool_versions.py [TOOL ...]
@@ -62,8 +64,11 @@ def version_file(name, repo, file, usable=None):
 # the new version is usable)
 TOOLS = (
     version_file("actionlint", "rhysd/actionlint", "actionlint"),
+    # The Go for repos without their own go.mod or .go-version; its tags are like go1.27.4
+    ("Go", "golang/go", "go", "versions/.go-version", VERSION_FILE, None),
     version_file("golangci-lint", "golangci/golangci-lint", "golangci-lint"),
     version_file("hadolint", "hadolint/hadolint", "hadolint"),
+    version_file("ktfmt", "Kotlin/ktfmt", "ktfmt"),
     (
         "pre-commit-hooks", "pre-commit/pre-commit-hooks", "v",
         "configs/pre-commit.yaml", FROZEN_REV, None,

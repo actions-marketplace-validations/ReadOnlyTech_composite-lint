@@ -1,0 +1,4 @@
+# ktfmt flags, one per line. With --enable-editorconfig, the .editorconfig properties override the
+# style's settings.
+--kotlinlang-style
+--enable-editorconfig

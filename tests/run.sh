@@ -20,8 +20,8 @@ export LINT_CONFIG_FILE=/dev/null
 # and its .pre-commit-config.yaml would be found instead of the bundled config being tested
 export LINT_PRE_COMMIT_CONFIG=configs/pre-commit.yaml
 
-# Created here rather than committed: the runner can't download an action whose repo contains a broken symlink. It's
-# still linted, being untracked but not ignored.
+# Created here rather than committed: the runner can't download an action whose repo contains a
+# broken symlink. It's still linted, being untracked but not ignored.
 broken_symlink=tests/fail/pre-commit/broken-symlink/link
 # A separate repo, for its own linter configs
 here="${PWD}"
@@ -33,17 +33,17 @@ ln -sf missing.txt "${broken_symlink}"
 trap 'rm -f "${broken_symlink}"; rm -rf "${repo}" "${bin}"' EXIT
 
 fail() {
-  local message="${*}"
-  readonly message
+  local -r message="${*}"
   echo "FAIL: ${message}"
   failures="$((failures + 1))"
 }
 
 # Checks `lint detect`'s output for the given arguments
 detects() {
-  local description="${1}" expected="${2}" args=("${@:3}") actual
+  local -r description="${1}" expected="${2}" args=("${@:3}")
+  local actual
   actual="$("${lint}" detect "${args[@]}" 2>&1)"
-  readonly description expected args actual
+  readonly actual
   if [[ ${actual} != "${expected}" ]]; then
     fail "${description}: expected ${expected}, got ${actual}"
   else
@@ -51,7 +51,7 @@ detects() {
   fi
 }
 
-detects 'detect tests/pass' '["actions","docker","go","pre-commit","python","shell","terraform","woke","yaml"]' tests/pass
+detects 'detect tests/pass' '["actions","docker","go","kotlin","pre-commit","python","shell","terraform","woke","yaml"]' tests/pass
 
 if ! output="$("${lint}" run tests/pass 2>&1)"; then
   echo "${output}"
@@ -60,29 +60,41 @@ else
   echo 'ok: tests/pass'
 fi
 
+# python passes and yaml fails, so only yaml is shown. Without a command, so run is assumed.
+output="$("${lint}" -q -l python,yaml tests/pass/python tests/fail/yaml/trailing-spaces 2>&1)"
+status="${?}"
+if [[ ${status} -ne 1 || ${output} == *'Linting python'* || ${output} != *'Linting yaml........................FAIL'*'trailing spaces'* ]]; then
+  echo "${output}"
+  fail "quiet: expected exit 1 with only the yaml group and its output, got ${status}"
+else
+  echo 'ok: quiet shows only the languages that fail'
+fi
+
 output="$(LINT_YAMLLINT_CONFIG=missing.yml "${lint}" run --languages python,yaml tests/pass 2>&1)"
 status="${?}"
-if [[ ${status} -ne 2 || ${output} == *'== python =='* ]]; then
+if [[ ${status} -ne 2 || ${output} == *'Linting python'* ]]; then
   echo "${output}"
   fail "invalid input: expected exit 2 before anything ran, got ${status}"
 else
   echo 'ok: invalid input stops everything up front'
 fi
 
-# This golangci-lint version is never installed, and the system dirs won't have one to fall back on (unlike, e.g.,
-# Homebrew's), so only the go checks should be skipped. Uses this Bash, since PATH no longer finds a modern one, and
-# this git, rather than whatever old one the system dirs have.
+# This golangci-lint version is never installed, and the system dirs won't have one to fall back on
+# (unlike, e.g., Homebrew's), so only the go checks should be skipped. Uses this Bash, since PATH no
+# longer finds a modern one, and this git, rather than whatever old one the system dirs have.
 ln -s "$(command -v git)" "${bin}/git"
 output="$(PATH="${bin}:/usr/bin:/bin" LINT_GOLANGCI_LINT_VERSION=0.0.1 "${BASH}" "${lint}" run --languages go,python tests/pass 2>&1)"
 status="${?}"
-if [[ ${status} -ne 2 || ${output} != *'skipping go'* || ${output} != *'== python =='* ]]; then
+if [[ ${status} -ne 2 || ${output} != *'Linting go..........................FAIL'*'skipping go'* ||
+  ${output} != *'Linting python......................PASS'* ]]; then
   echo "${output}"
   fail "setup isolation: expected exit 2 with go skipped and python run, got ${status}"
 else
   echo 'ok: a language that fails setup is skipped without stopping the others'
 fi
 
-# Without the guards, this config's hooks would run the linter again, which would run them again, and never finish
+# Without the guards, this config's hooks would run the linter again, which would run them again,
+# and never finish
 output="$(LINT_PRE_COMMIT_CONFIG=tests/pre-commit-nested.yaml "${lint}" run --languages pre-commit tests/pass/pre-commit 2>&1)"
 status="${?}"
 if ((status)); then
@@ -92,7 +104,8 @@ else
   echo "ok: a pre-commit config that runs composite-lint doesn't recurse"
 fi
 
-# As a hook from the repo's own pre-commit config, pre-commit already runs the other hooks, so the check would repeat them
+# As a hook from the repo's own pre-commit config, pre-commit already runs the other hooks, so the
+# check would repeat them
 output="$(PRE_COMMIT=1 LINT_PRE_COMMIT_CONFIG='' "${lint}" detect -l pre-commit,yaml tests/pass 2>/dev/null)"
 if [[ ${output} != '["yaml"]' ]]; then
   fail "a hook of the repo's pre-commit config: expected the pre-commit check to be skipped, got ${output}"
@@ -108,6 +121,9 @@ detects 'options override the config' '["yaml"]' -c <(echo 'languages: python') 
 LINT_LANGUAGES=yaml detects 'the environment overrides the config' '["yaml"]' -c <(echo 'languages: python') tests/pass
 detects 'config and option excludes add up' '["pre-commit","woke","yaml"]' \
   -c <(echo 'exclude: tests/pass/python') -x tests/pass/shell tests/pass/python tests/pass/shell tests/pass/yaml
+detects "a .go file brings in its module's go.mod" '["go","pre-commit","woke"]' tests/pass/go/main.go
+detects "a .go file's module, though its go.mod is outside the config paths" '["go","pre-commit","woke"]' \
+  -c <(echo 'paths: tests/pass/go/main.go') tests/pass
 detects 'given paths only count within the config paths' '["pre-commit","python","woke"]' \
   -c <(echo 'paths: tests/pass/python') tests/pass
 
@@ -134,10 +150,9 @@ fi
 
 # Runs the linter in the separate repo, and checks its exit status
 in_repo() {
-  local description="${1}" expected="${2}" args=("${@:3}") actual
+  local -r description="${1}" expected="${2}" args=("${@:3}")
   output="$(cd "${repo}" && "${here}/${lint}" run "${args[@]}" 2>&1)"
-  actual="${?}"
-  readonly description expected args actual
+  local -r actual="${?}"
   if ((actual != expected)); then
     echo "${output}"
     fail "${description}: expected exit ${expected}, got ${actual}"
@@ -157,14 +172,44 @@ printf '[metadata]\nname = example\n' >"${repo}/setup.cfg"
 printf '[flake8]\nmax-line-length = 200\n' >"${repo}/.flake8"
 in_repo "the repo's config, skipping one without the tool's section" 0 -l python
 
-# The repo's own version files, over the bundled versions. Physical path, as git reports it (macOS's /var is a symlink)
+# ktfmt: flags, not a config file of its own, and the .editorconfig when they enable it (as the
+# bundled ones do)
+printf 'fun f() {\n  g()\n}\n' >"${repo}/two_space.kt"
+in_repo 'the bundled ktfmt flags: kotlinlang style' 1 -l kotlin
+printf '[*.kt]\nindent_size = 2\n' >"${repo}/.editorconfig"
+in_repo "the bundled ktfmt flags: the repo's .editorconfig" 0 -l kotlin
+printf -- '--kotlinlang-style\n' >"${repo}/.ktfmt"
+in_repo "the repo's ktfmt flags" 1 -l kotlin
+printf -- '--enable-editorconfig\n--do-not-remove-unused-imports\n' >"${repo}/.ktfmt"
+in_repo 'ktfmt flags with --enable-editorconfig and others' 0 -l kotlin
+printf -- '--stdin-name=x.kt\n' >"${repo}/.ktfmt"
+in_repo 'ktfmt flags that stop the check' 2 -l kotlin
+rm "${repo}/two_space.kt" "${repo}/.editorconfig" "${repo}/.ktfmt"
+
+# Only the first argument is the command, so after an option, `run` is a path
+mkdir "${repo}/run"
+printf 'key: value   \n' >"${repo}/run/bad.yml"
+output="$(cd "${repo}" && "${here}/${lint}" -l yaml run 2>&1)"
+status="${?}"
+if [[ ${status} -ne 1 || ${output} != *'run/bad.yml'* ]]; then
+  echo "${output}"
+  fail "a command word after an option: expected it linted as a path, got ${status}"
+else
+  echo 'ok: a command word after an option is a path'
+fi
+rm -r "${repo}/run"
+
+# The repo's own version files, over the bundled versions. Physical path, as git reports it (macOS's
+# /var is a symlink)
 echo 1.2.3 >"${repo}/.terraform-version"
 echo 3.10 >"${repo}/.python-version"
 echo 0.9.0 >"${repo}/.shellcheck-version"
 echo 1.25 >"${repo}/.go-version"
-output="$(cd "${repo}" && "${here}/${lint}" versions -l go,python,shell,terraform 2>&1)"
+echo 21 >"${repo}/.java-version"
+output="$(cd "${repo}" && "${here}/${lint}" versions -l go,kotlin,python,shell,terraform 2>&1)"
 if [[ ${output} != *'terraform-version 1.2.3'* || ${output} != *'shellcheck v0.9.0'* ||
   ${output} != *"python-version-file $(cd "${repo}" && pwd -P)/.python-version"* ||
+  ${output} != *"java-version-file $(cd "${repo}" && pwd -P)/.java-version"* ||
   ${output} != *"go-version-file $(cd "${repo}" && pwd -P)/.go-version"* ]]; then
   echo "${output}"
   fail "the repo's version files: expected them to be used"
@@ -180,6 +225,13 @@ else
   echo 'ok: go.mod over .go-version'
 fi
 rm "${repo}"/.*-version "${repo}/go.mod"
+output="$(cd "${repo}" && "${here}/${lint}" versions -l go 2>&1)"
+if [[ ${output} != *"go-version-file ${here}/versions/.go-version"* ]]; then
+  echo "${output}"
+  fail "no go.mod or .go-version: expected the bundled version"
+else
+  echo 'ok: the bundled Go version, without go.mod or .go-version'
+fi
 
 # Which files: each step adds a failing one, which only the step about it should pick up
 printf 'ignored.yml\n.hidden/\nnode_modules/\n' >"${repo}/.gitignore"
@@ -208,7 +260,8 @@ for case in tests/fail/*/*/; do
   if output="$("${lint}" run --languages "${lang}" "${case}" 2>&1)"; then
     echo "${output}"
     fail "${case}: passed"
-  # case dirs are often named after the rule, so don't let the paths in the output satisfy the expectation
+  # case dirs are often named after the rule, so don't let the paths in the output satisfy the
+  # expectation
   elif ! grep -Eq -- "${expect}" <<<"${output//"${case}"/}"; then
     echo "${output}"
     fail "${case}: output didn't match /${expect}/"

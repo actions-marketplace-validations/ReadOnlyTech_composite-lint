@@ -9,10 +9,11 @@ branding:
   icon: check-circle
   color: green
 
-# Versions: `<tool>-version` takes a raw version. `<tool>-version-file` takes the path to a file that contains a
-# version. Set only one of the two. Linter configs: `<tool>-config` takes a path. You can also set all of the inputs
-# except cache, config-file, and github-token in the config file. Inputs have priority over the config file. If neither
-# sets a value, the action uses the file of the repo, if it exists. If not, the action uses the bundled file.
+# Versions: `<tool>-version` takes a raw version. `<tool>-version-file` takes the path to a file
+# that contains a version. Set only one of the two. Linter configs: `<tool>-config` takes a path.
+# You can also set all of the inputs except cache, config-file, and github-token in the config file.
+# Inputs have priority over the config file. If neither sets a value, the action uses the file of
+# the repo, if it exists. If not, the action uses the bundled file.
 inputs:
   cache:
     description: 'Whether to keep these items in the Actions cache: the linters, the module and build caches of Go, the analysis cache of golangci-lint, and the Terraform providers.'
@@ -21,7 +22,8 @@ inputs:
   config-file:
     description: 'Config file, with flat `key: value` lines that use the names of these inputs. The default is the .composite-lint.yml file in the repo root, if it exists.'
     required: false
-  # bin/lint.sh applies the defaults for exclude, include-hidden, and include-ignored. Thus, a config file can set them.
+  # bin/lint.sh applies the defaults for exclude, include-hidden, include-ignored, and quiet. Thus, a
+  # config file can set them.
   exclude:
     description: 'Paths and glob patterns to exclude, separated by commas or whitespace. In a pattern, `*` matches in one directory, and `**` matches across directories. A path or pattern also excludes all of the files under each match. The default is `.git **/node_modules`. If you set this input, your value replaces the default.'
     required: false
@@ -36,10 +38,13 @@ inputs:
     description: Whether to also lint the files that git ignores, like `ls`. If false, the action lints only the files that git tracks and the untracked files that git does not ignore. Also see include-hidden. The default is false.
     required: false
   languages:
-    description: 'Languages to lint, separated by commas or whitespace. Choices: actions, docker, go, pre-commit, python, shell, terraform, woke, yaml. If empty, the action finds the languages from the files in the repo.'
+    description: 'Languages to lint, separated by commas or whitespace. Choices: actions, docker, go, kotlin, pre-commit, python, shell, terraform, woke, yaml. If empty, the action finds the languages from the files in the repo.'
     required: false
   paths:
     description: Paths to lint, separated by commas or whitespace. The default is the repo root.
+    required: false
+  quiet:
+    description: Whether to show only the languages that fail. If true, the action does not show the group or the output of a language that passes. The default is false.
     required: false
 
   actionlint-config:
@@ -64,7 +69,7 @@ inputs:
     description: Go version.
     required: false
   go-version-file:
-    description: File that contains the Go version. The default is the go.mod file in the repo root. If go.mod does not exist, the default is the .go-version file in the repo root, if it exists.
+    description: File that contains the Go version. The default is the go.mod file in the repo root. If go.mod does not exist, the default is the .go-version file in the repo root. If neither exists, the default is the bundled file.
     required: false
   golangci-lint-config:
     description: golangci-lint config file.
@@ -83,6 +88,21 @@ inputs:
     required: false
   hadolint-version-file:
     description: File that contains the hadolint version. The default is the .hadolint-version file in the repo root, if it exists.
+    required: false
+  java-version:
+    description: Java version for ktfmt.
+    required: false
+  java-version-file:
+    description: File that contains the Java version. The default is the .java-version file in the repo root. If that file does not exist, the default is the bundled file, which has the latest LTS release.
+    required: false
+  ktfmt-config:
+    description: File of ktfmt flags, one flag on each line. The default is the .ktfmt file in the repo root. If that file does not exist, the default is the bundled file, which has `--kotlinlang-style` and `--enable-editorconfig`. Options that stop the check, such as `--stdin-name`, are errors.
+    required: false
+  ktfmt-version:
+    description: ktfmt version.
+    required: false
+  ktfmt-version-file:
+    description: File that contains the ktfmt version. The default is the .ktfmt-version file in the repo root, if it exists.
     required: false
   pre-commit-config:
     description: pre-commit config file. The default is the .pre-commit-config.yaml file of the repo. If that file does not exist, the default is the bundled file, which runs detect-private-key and check-symlinks.
@@ -168,6 +188,8 @@ runs:
         LINT_GO_VERSION_FILE: ${{ inputs.go-version-file }}
         LINT_INCLUDE_HIDDEN: ${{ inputs.include-hidden }}
         LINT_INCLUDE_IGNORED: ${{ inputs.include-ignored }}
+        LINT_JAVA_VERSION: ${{ inputs.java-version }}
+        LINT_JAVA_VERSION_FILE: ${{ inputs.java-version-file }}
         LINT_LANGUAGES: ${{ inputs.languages }}
         LINT_PATHS: ${{ inputs.paths }}
         LINT_PYTHON_VERSION: ${{ inputs.python-version }}
@@ -179,14 +201,16 @@ runs:
         lint="${GITHUB_ACTION_PATH}/bin/lint.sh"
         readonly lint
         echo "languages=$("${lint}" detect)" >>"${GITHUB_OUTPUT}"
-        # The runtime settings for the setup steps (for example, python-version-file), with the config file applied
+        # The runtime settings for the setup steps (for example, python-version-file), with the
+        # config file applied
         "${lint}" versions |
-          awk '/^(go|python|terraform)-version/ { key = $1; sub(/^[^ ]+ /, ""); print key "=" $0 }' >>"${GITHUB_OUTPUT}"
+          awk '/^(go|java|python|terraform)-version/ { key = $1; sub(/^[^ ]+ /, ""); print key "=" $0 }' >>"${GITHUB_OUTPUT}"
         # A new golangci-lint cache key each week, so that the cache does not become stale
         echo "week=$(date -u +%G-%V)" >>"${GITHUB_OUTPUT}"
 
-    # The setup steps can fail without stopping the action. Then bin/lint.sh fails only the languages that need them,
-    # and it lints the other languages. If setup-python fails, the action uses the python3 of the runner.
+    # The setup steps can fail without stopping the action. Then bin/lint.sh fails only the
+    # languages that need them, and it lints the other languages. If setup-python fails, the action
+    # uses the python3 of the runner.
     - name: Set up Python
       id: python
       if: contains(fromJSON(steps.detect.outputs.languages), 'actions') || contains(fromJSON(steps.detect.outputs.languages), 'pre-commit') || contains(fromJSON(steps.detect.outputs.languages), 'python') || contains(fromJSON(steps.detect.outputs.languages), 'yaml')
@@ -195,7 +219,8 @@ runs:
       with:
         python-version: ${{ steps.detect.outputs.python-version }}
         python-version-file: ${{ steps.detect.outputs.python-version-file }}
-        # The linters get their own venvs. Thus, the Python for the other steps of the job stays the same.
+        # The linters get their own venvs. Thus, the Python for the other steps of the job stays the
+        # same.
         update-environment: false
 
     - name: Set up Go
@@ -208,6 +233,17 @@ runs:
         go-version: ${{ steps.detect.outputs.go-version }}
         go-version-file: ${{ steps.detect.outputs.go-version-file }}
 
+    # setup-java has no option to leave the environment unchanged. Thus, the other steps of the job
+    # also get this Java.
+    - name: Set up Java
+      if: contains(fromJSON(steps.detect.outputs.languages), 'kotlin')
+      uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78  # v6.2.0
+      continue-on-error: true
+      with:
+        distribution: temurin
+        java-version: ${{ steps.detect.outputs.java-version }}
+        java-version-file: ${{ steps.detect.outputs.java-version-file }}
+
     - name: Set up Terraform
       if: contains(fromJSON(steps.detect.outputs.languages), 'terraform')
       uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
@@ -218,9 +254,10 @@ runs:
         # The stdout wrapper interferes when bin/lint.sh reads the output of Terraform.
         terraform_wrapper: false
 
-    # The exact key depends on the tool versions, which are known only when the Lint step runs. Thus, this step
-    # restores the latest entry by its prefix, and a later step saves the entry with the exact key. Self-hosted runners
-    # keep the tool cache between jobs, so they do not use this cache.
+    # The exact key depends on the tool versions, which are known only when the Lint step runs.
+    # Thus, this step restores the latest entry by its prefix, and a later step saves the entry with
+    # the exact key. Self-hosted runners keep the tool cache between jobs, so they do not use this
+    # cache.
     - name: Restore linters
       id: tools-cache
       if: inputs.cache == 'true' && runner.environment == 'github-hosted'
@@ -274,6 +311,9 @@ runs:
         LINT_HADOLINT_VERSION_FILE: ${{ inputs.hadolint-version-file }}
         LINT_INCLUDE_HIDDEN: ${{ inputs.include-hidden }}
         LINT_INCLUDE_IGNORED: ${{ inputs.include-ignored }}
+        LINT_KTFMT_CONFIG: ${{ inputs.ktfmt-config }}
+        LINT_KTFMT_VERSION: ${{ inputs.ktfmt-version }}
+        LINT_KTFMT_VERSION_FILE: ${{ inputs.ktfmt-version-file }}
         LINT_LANGUAGES: ${{ steps.detect.outputs.languages }}
         LINT_PATHS: ${{ inputs.paths }}
         LINT_PRE_COMMIT_CONFIG: ${{ inputs.pre-commit-config }}
@@ -282,6 +322,7 @@ runs:
         # Without this, a restored cache keeps every version that it ever contained.
         LINT_PRUNE: ${{ steps.tools-cache.outcome == 'success' }}
         LINT_PYTHON: ${{ steps.python.outputs.python-path }}
+        LINT_QUIET: ${{ inputs.quiet }}
         LINT_SHELLCHECK_CONFIG: ${{ inputs.shellcheck-config }}
         LINT_SHELLCHECK_VERSION: ${{ inputs.shellcheck-version }}
         LINT_SHELLCHECK_VERSION_FILE: ${{ inputs.shellcheck-version-file }}
@@ -299,7 +340,8 @@ runs:
         LINT_ZIZMOR_VERSION_FILE: ${{ inputs.zizmor-version-file }}
         TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/terraform-plugins
       shell: bash
-      # If a tool does not install, only the languages that need it fail. Thus, the step lints after a failed install.
+      # If a tool does not install, only the languages that need it fail. Thus, the step lints after
+      # a failed install.
       run: |
         lint="${GITHUB_ACTION_PATH}/bin/lint.sh"
         readonly lint
@@ -311,8 +353,8 @@ runs:
         readonly status
         exit "${status}"
 
-    # This step saves the cache when linting fails too. It saves only when all of the tools installed, and when the
-    # restored entry does not have this exact key.
+    # This step saves the cache when linting fails too. It saves only when all of the tools
+    # installed, and when the restored entry does not have this exact key.
     - name: Save linters
       if: >-
         always() && steps.tools-cache.outcome == 'success' && steps.lint.outputs.installed == '1' &&

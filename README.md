@@ -15,10 +15,10 @@ We test the action only on Linux runners, both GitHub-hosted and self-hosted.
     persist-credentials: false
 
 - name: Run linting (strict, autodetect)
-  uses: ReadOnlyTech/composite-lint@v0.0.11
+  uses: ReadOnlyTech/composite-lint@v0.3.0
 
 - name: Run linting (custom)
-  uses: ReadOnlyTech/composite-lint@v0.0.11
+  uses: ReadOnlyTech/composite-lint@v0.3.0
   with:
     cache: false
     paths: src
@@ -32,7 +32,7 @@ We test the action only on Linux runners, both GitHub-hosted and self-hosted.
 
 The examples use the tag of the latest release. The releases of this action are
 immutable, so this tag cannot change. Each release updates these examples. You
-can use a floating tag like `v0`, but we do not recommend it, because it can
+can use a floating tag like `v0`, but we do not recommend it because it can
 change.
 
 The action installs only the tools that the selected `languages` need. If you
@@ -47,7 +47,8 @@ Each tool gets its version from the first of these that exists:
    [`versions/`](versions). Examples are `.python-version` and
    `.terraform-version`. For Go, the `go.mod` file in the repo root comes first.
 3. The bundled file in [`versions/`](versions). The bundled versions are
-   usually the latest stable releases.
+   usually the latest stable releases. For Java, the bundled version is the
+   latest LTS release.
 
 ### Linter Configs
 
@@ -66,6 +67,7 @@ Each linter gets its linter config from the first of these that exists:
 | flake8 | `setup.cfg`, `tox.ini`, `.flake8` (only with a `[flake8]` section) |
 | golangci-lint | `.golangci.yml`, `.golangci.yaml`, `.golangci.toml`, `.golangci.json` |
 | hadolint | `.hadolint.yaml`, `.hadolint.yml` |
+| ktfmt | `.ktfmt` (see [Kotlin](#kotlin)) |
 | pre-commit | `.pre-commit-config.yaml` |
 | ShellCheck | `.shellcheckrc`, `shellcheckrc` |
 | TFLint | `.tflint.hcl` |
@@ -152,6 +154,20 @@ also does its online audits when `GH_TOKEN` or `gh auth token` gives a token.
 
 Tools: `golangci-lint` and `go mod tidy`.
 
+### Kotlin
+
+Tools: `ktfmt --dry-run --set-exit-if-changed`, for `.kt` and `.kts` files.
+ktfmt runs as a jar, so it needs Java. The action installs Java with
+`actions/setup-java`, which also changes the Java for the other steps of the
+job. Local runs use the `java` on the `PATH`.
+
+ktfmt has no config file. Its linter config is a file of ktfmt flags, with one
+flag on each line. The bundled file has `--kotlinlang-style` (4-space indents)
+and `--enable-editorconfig`. Thus, by default, an `.editorconfig` file can
+change the line length, the indents, and the trailing commas. Its values
+override the values of the style flag. The flags file cannot have options that
+stop the check, such as `--stdin-name`.
+
 ### Python
 
 Tools: `flake8`.
@@ -191,11 +207,15 @@ bin/lint.sh install
 # lints the repo (or the config file's `paths`)
 bin/lint.sh run
 
-# does both the above
+# does both the above; without a command, it's `run --install`
 bin/lint.sh run --install
+bin/lint.sh
 
-# lints one language in a dir, excluding a subdir (short forms: r, -l, -x)
-bin/lint.sh r -l shell -x path/to/dir/vendor path/to/dir
+# installs as needed, then lints one language in a dir, excluding a subdir
+bin/lint.sh -l shell -x path/to/dir/vendor path/to/dir
+
+# shows only the languages that fail (the `quiet` input)
+bin/lint.sh run -q
 ```
 
 Local runs read their settings from the config file. They also read the same
@@ -211,14 +231,20 @@ This is the recommended `.pre-commit-config.yaml`:
 
 repos:
   - repo: https://github.com/ReadOnlyTech/composite-lint
-    rev: v0.0.11
+    rev: v0.3.0
     hooks:
       - id: composite-lint
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: check-symlinks
       - id: detect-private-key
+      # any other hooks you already use
+
+  # any other repos you already use
+
+# any other config you already use
 ```
 
 The hook installs the pinned tools when they are necessary. It lints the files

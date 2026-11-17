@@ -9,7 +9,7 @@
     "languages": {
       "description": "Languages to lint, separated by commas or whitespace. If not set, the action finds the languages from the files in the repo.",
       "type": "string",
-      "pattern": "^\\s*(actions|docker|go|pre-commit|python|shell|terraform|woke|yaml)(\\s*[,\\s]\\s*(actions|docker|go|pre-commit|python|shell|terraform|woke|yaml))*\\s*$"
+      "pattern": "^\\s*(actions|docker|go|kotlin|pre-commit|python|shell|terraform|woke|yaml)(\\s*[,\\s]\\s*(actions|docker|go|kotlin|pre-commit|python|shell|terraform|woke|yaml))*\\s*$"
     },
     "paths": {
       "description": "Paths to lint, relative to the repo root and separated by commas or whitespace. The default is the repo root.",
@@ -27,6 +27,10 @@
       "description": "Whether to also lint the files that git ignores, like `ls`. If false, the action lints only the files that git tracks and the untracked files that git does not ignore. Also see include-hidden. The default is false.",
       "type": "boolean"
     },
+    "quiet": {
+      "description": "Whether to show only the languages that fail. If true, the action does not show the group or the output of a language that passes. The default is false.",
+      "type": "boolean"
+    },
     "go-version": {
       "description": "Go version. Set only one of this key and go-version-file.",
       "type": [
@@ -36,6 +40,17 @@
     },
     "go-version-file": {
       "description": "File that contains the Go version, relative to the repo root. The default is the go.mod file in the repo root. If go.mod does not exist, the default is the .go-version file in the repo root, if it exists.",
+      "type": "string"
+    },
+    "java-version": {
+      "description": "Java version for ktfmt. Set only one of this key and java-version-file.",
+      "type": [
+        "string",
+        "number"
+      ]
+    },
+    "java-version-file": {
+      "description": "File that contains the Java version, relative to the repo root. The default is the .java-version file in the repo root. If that file does not exist, the default is the bundled file, which has the latest LTS release.",
       "type": "string"
     },
     "python-version": {
@@ -118,6 +133,21 @@
     },
     "hadolint-version-file": {
       "description": "File that contains the hadolint version, relative to the repo root. The default is the .hadolint-version file in the repo root, if it exists.",
+      "type": "string"
+    },
+    "ktfmt-config": {
+      "description": "File of ktfmt flags, one flag on each line, relative to the repo root. The default is the .ktfmt file in the repo root. If that file does not exist, the default is the bundled file, which has `--kotlinlang-style` and `--enable-editorconfig`. Options that stop the check, such as `--stdin-name`, are errors.",
+      "type": "string"
+    },
+    "ktfmt-version": {
+      "description": "ktfmt version. Set only one of this key and ktfmt-version-file.",
+      "type": [
+        "string",
+        "number"
+      ]
+    },
+    "ktfmt-version-file": {
+      "description": "File that contains the ktfmt version, relative to the repo root. The default is the .ktfmt-version file in the repo root, if it exists.",
       "type": "string"
     },
     "pre-commit-config": {
